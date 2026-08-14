@@ -198,9 +198,9 @@ export class App {
   }
 
   async loadUserData() {
-    const hasSession = !!getSavedSession();
+    const sessionStr = await getSavedSession();
 
-    if (!hasSession) {
+    if (!sessionStr) {
       this.authModal.show(1);
       return;
     }

@@ -85,7 +85,7 @@ class TgStreamClient {
     if (this.client && this.isConnected) return true;
     if (this.isConnecting) return false;
 
-    const sessionStr = getSavedSession();
+    const sessionStr = await getSavedSession();
     if (!sessionStr) {
       this.isConnected = false;
       this.isConnecting = false;
@@ -93,7 +93,7 @@ class TgStreamClient {
       return false;
     }
 
-    const config = getTgConfig();
+    const config = await getTgConfig();
     if (!config.apiId || !config.apiHash) {
       this.isConnected = false;
       this.isConnecting = false;
@@ -277,8 +277,9 @@ class TgStreamClient {
         {
           password: async () => passStr,
           onError: async (err) => {
-            console.error("2FA Error:", err);
-            return false;
+            console.error("2FA Check Error:", err);
+            // Returning true immediately halts the loop and throws err
+            return true;
           },
         }
       );
