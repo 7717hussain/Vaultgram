@@ -85,14 +85,35 @@ class TgStreamClient {
     if (this.client && this.isConnected) return true;
     if (this.isConnecting) return false;
 
+    const sessionStr = getSavedSession();
+    if (!sessionStr) {
+      this.isConnected = false;
+      this.isConnecting = false;
+      this.notifyStatus();
+      return false;
+    }
+
+    const config = getTgConfig();
+    if (!config.apiId || !config.apiHash) {
+      this.isConnected = false;
+      this.isConnecting = false;
+      this.notifyStatus();
+      return false;
+    }
+
     this.isConnecting = true;
     this.notifyStatus();
 
-    const sessionStr = getSavedSession();
-
     try {
       this.client = this.createClient(sessionStr);
-      await this.client.connect();
+      
+      // Connect with 8s timeout to prevent hanging UI
+      const connectPromise = this.client.connect();
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("Telegram MTProto connection timeout")), 8000)
+      );
+
+      await Promise.race([connectPromise, timeoutPromise]);
 
       if (await this.client.isUserAuthorized()) {
         this.user = await this.client.getMe();

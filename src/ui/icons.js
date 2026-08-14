@@ -24,42 +24,45 @@ import {
   AlertTriangle, 
   Play, 
   Keyboard, 
-  Trash2,
-  SlidersHorizontal,
-  LayoutGrid,
-  Layers,
-  HardDrive
+  Trash2, 
+  SlidersHorizontal, 
+  LayoutGrid, 
+  Layers, 
+  HardDrive 
 } from 'lucide';
 
-// Helper to convert lucide icon definitions to safe DOM SVG elements
-export function createIcon(iconDef, attrs = {}) {
-  const [tag, defaultAttrs, children = []] = iconDef;
+/**
+ * Converts Lucide icon element definitions `[ [tag, attrs], [tag, attrs], ... ]`
+ * directly into a valid SVG DOM Element.
+ */
+export function createIcon(iconDef, customAttrs = {}) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  
-  const mergedAttrs = {
-    ...defaultAttrs,
-    width: attrs.size || defaultAttrs.width || 16,
-    height: attrs.size || defaultAttrs.height || 16,
-    stroke: attrs.color || 'currentColor',
-    'stroke-width': attrs.strokeWidth || defaultAttrs['stroke-width'] || 2,
-    fill: 'none',
-    ...attrs,
-  };
 
-  delete mergedAttrs.size;
-  delete mergedAttrs.color;
-  delete mergedAttrs.strokeWidth;
+  const size = customAttrs.size || 16;
+  const stroke = customAttrs.color || 'currentColor';
+  const strokeWidth = customAttrs.strokeWidth || 2;
 
-  for (const [key, val] of Object.entries(mergedAttrs)) {
-    svg.setAttribute(key, val);
-  }
+  svg.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', stroke);
+  svg.setAttribute('stroke-width', String(strokeWidth));
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
 
-  for (const [childTag, childAttrs] of children) {
-    const childEl = document.createElementNS('http://www.w3.org/2000/svg', childTag);
-    for (const [k, v] of Object.entries(childAttrs)) {
-      childEl.setAttribute(k, v);
+  if (Array.isArray(iconDef)) {
+    for (const item of iconDef) {
+      if (Array.isArray(item) && item.length >= 2) {
+        const [tag, attrs] = item;
+        const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+        for (const [key, val] of Object.entries(attrs || {})) {
+          el.setAttribute(key, String(val));
+        }
+        svg.appendChild(el);
+      }
     }
-    svg.appendChild(childEl);
   }
 
   return svg;
