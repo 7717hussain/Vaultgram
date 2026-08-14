@@ -21,7 +21,7 @@
 /* shadcn Card Container */
 .shadcn-card {
   width: 100%;
-  max-width: 440px;
+  max-width: 520px;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
@@ -29,8 +29,36 @@
   padding: 1.75rem;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 1.25rem;
   position: relative;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+/* Top-Right Quick Bypass/Close Button */
+.modal-close-bypass-btn {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: transparent;
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  font-size: 1rem;
+  width: 28px;
+  height: 28px;
+  border-radius: calc(var(--radius) - 2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1;
+}
+
+.modal-close-bypass-btn:hover {
+  background: hsl(var(--destructive) / 0.2);
+  border-color: hsl(var(--destructive) / 0.4);
+  color: #f87171;
 }
 
 /* Header */
@@ -39,6 +67,7 @@
   flex-direction: column;
   gap: 0.5rem;
   text-align: center;
+  padding-top: 0.5rem;
 }
 
 .brand-badge-container {
@@ -63,14 +92,14 @@
 }
 
 .shadcn-card-title {
-  font-size: 1.5rem;
+  font-size: 1.35rem;
   font-weight: 700;
   letter-spacing: -0.025em;
   color: hsl(var(--foreground));
 }
 
 .shadcn-card-description {
-  font-size: 0.875rem;
+  font-size: 0.85rem;
   color: hsl(var(--muted-foreground));
   line-height: 1.4;
 }
@@ -153,7 +182,7 @@
 }
 
 .shadcn-textarea {
-  min-height: 5rem;
+  min-height: 4.5rem;
   width: 100%;
   border-radius: var(--radius);
   border: 1px solid hsl(var(--input));
@@ -181,10 +210,10 @@
 
 /* Buttons (shadcn) */
 .shadcn-button {
-  height: 2.5rem;
-  padding: 0 1rem;
+  height: 2.35rem;
+  padding: 0 0.875rem;
   border-radius: var(--radius);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
   display: inline-flex;
@@ -244,13 +273,144 @@
   cursor: not-allowed;
 }
 
+/* Channel Discovery Selection View */
+.channel-selection-view {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.channel-category-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.channel-category-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.channel-category-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.channel-select-all-btn {
+  background: none;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.725rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.channel-select-all-btn:hover {
+  color: hsl(var(--foreground));
+}
+
+.channel-list-scroll {
+  max-height: 180px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding-right: 0.25rem;
+}
+
+.channel-item-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.65rem;
+  background: hsl(var(--muted) / 0.35);
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  user-select: none;
+}
+
+.channel-item-card:hover {
+  background: hsl(var(--accent));
+}
+
+.channel-item-left {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.channel-custom-checkbox {
+  width: 16px;
+  height: 16px;
+  accent-color: hsl(var(--primary));
+  cursor: pointer;
+}
+
+.channel-item-meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.channel-item-title {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.channel-item-subtitle {
+  font-size: 0.7rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.channel-badge {
+  font-size: 0.675rem;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid hsl(var(--border));
+}
+
+.channel-badge.public {
+  background: hsla(var(--brand-blue), 0.15);
+  color: #60a5fa;
+  border-color: hsla(var(--brand-blue), 0.3);
+}
+
+.channel-badge.private {
+  background: hsla(var(--muted), 0.8);
+  color: hsl(var(--muted-foreground));
+}
+
+.empty-channel-notice {
+  font-size: 0.775rem;
+  color: hsl(var(--muted-foreground));
+  padding: 0.75rem;
+  text-align: center;
+  background: hsl(var(--muted) / 0.2);
+  border-radius: var(--radius);
+  border: 1px dashed hsl(var(--border));
+}
+
 /* Helper Accordion / Collapsible API Key Info */
 .api-credentials-accordion {
-  margin-top: 0.5rem;
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
   background: hsl(var(--muted) / 0.3);
-  padding: 0.75rem;
+  padding: 0.65rem 0.75rem;
 }
 
 .accordion-header {
@@ -273,9 +433,9 @@
 
 /* Alert / Toast Messages */
 .shadcn-alert {
-  padding: 0.75rem 1rem;
+  padding: 0.65rem 0.85rem;
   border-radius: var(--radius);
-  font-size: 0.8125rem;
+  font-size: 0.8rem;
   line-height: 1.4;
   border: 1px solid transparent;
   animation: fadeIn 0.15s ease-out;
@@ -331,11 +491,11 @@
 /* Footer / Disclaimer */
 .card-footer-privacy {
   text-align: center;
-  font-size: 0.75rem;
+  font-size: 0.725rem;
   color: hsl(var(--muted-foreground));
   border-top: 1px solid hsl(var(--border));
-  padding-top: 1rem;
-  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  margin-top: 0.25rem;
 }
 
 .card-footer-privacy a {

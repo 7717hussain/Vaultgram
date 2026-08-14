@@ -199,6 +199,46 @@ class TgStreamClient {
     return this.user;
   }
 
+  // 4. Fetch and categorize user's channels (Public vs Private)
+  async getUserChannels() {
+    if (!this.client || !this.isConnected) {
+      const ok = await this.init();
+      if (!ok) throw new Error("Client is not connected to Telegram.");
+    }
+
+    const dialogs = await this.client.getDialogs({ limit: 100 });
+    const publicChannels = [];
+    const privateChannels = [];
+
+    for (const d of dialogs) {
+      if (d.isChannel || d.isGroup) {
+        const entity = d.entity;
+        if (!entity) continue;
+
+        // Cache entity for quick streaming reference
+        const idStr = String(entity.id);
+        this.channelEntityCache.set(idStr, entity);
+
+        const channelInfo = {
+          id: idStr,
+          title: d.title || entity.title || "Untitled Channel",
+          username: entity.username || null,
+          isPublic: !!entity.username,
+          unreadCount: d.unreadCount || 0,
+          rawEntity: entity,
+        };
+
+        if (channelInfo.isPublic) {
+          publicChannels.push(channelInfo);
+        } else {
+          privateChannels.push(channelInfo);
+        }
+      }
+    }
+
+    return { publicChannels, privateChannels };
+  }
+
   async getChannelEntity(channelId) {
     const key = String(channelId);
     if (this.channelEntityCache.has(key)) {
