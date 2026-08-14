@@ -159,22 +159,33 @@ class TgStreamClient {
         {
           qrCode: async (qr) => {
             let base64 = "";
-            if (Buffer.isBuffer(qr.token) || qr.token instanceof Uint8Array) {
-              base64 = Buffer.from(qr.token).toString("base64");
-            } else if (typeof qr.token === "string") {
-              base64 = qr.token;
-            } else if (qr.token && typeof qr.token.toString === "function") {
-              base64 = qr.token.toString("base64");
+            const tok = qr.token || qr;
+            if (Buffer.isBuffer(tok) || tok instanceof Uint8Array) {
+              base64 = Buffer.from(tok).toString("base64");
+            } else if (typeof tok === "string") {
+              base64 = tok;
+            } else if (tok && typeof tok.toString === "function") {
+              base64 = tok.toString("base64");
             }
             
             // Standard browser-safe Base64URL transformation
             const tokenStr = base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
             const tgUrl = `tg://login?token=${tokenStr}`;
-            if (onQrUrl) onQrUrl(tgUrl);
+            if (onQrUrl) {
+              try {
+                onQrUrl(tgUrl);
+              } catch (e) {
+                console.warn("onQrUrl error:", e);
+              }
+            }
           },
           password: async (hint) => {
             if (onNeeds2FA) return await onNeeds2FA(hint);
             return prompt("Enter your 2FA Password:");
+          },
+          onError: async (err) => {
+            console.error("signInUserWithQrCode onError:", err);
+            return false;
           },
         }
       );
@@ -256,22 +267,33 @@ class TgStreamClient {
       throw new Error("2FA Password is required.");
     }
 
-    const passwordSrpResult = await this.client.invoke(new Api.account.GetPassword());
-    const passwordSrpCheck = await computeCheck(passwordSrpResult, passStr);
-    
-    await this.client.invoke(
-      new Api.auth.CheckPassword({
-        password: passwordSrpCheck,
-      })
-    );
+    const config = await getTgConfig();
+    try {
+      const user = await this.client.signInWithPassword(
+        {
+          apiId: Number(config.apiId),
+          apiHash: String(config.apiHash),
+        },
+        {
+          password: async () => passStr,
+          onError: async (err) => {
+            console.error("2FA Error:", err);
+            return false;
+          },
+        }
+      );
 
-    const saved = this.client.session.save();
-    await setSavedSession(saved);
-    this.user = await this.client.getMe();
-    await setSavedUserProfile(this.user);
-    this.isConnected = true;
-    this.notifyStatus();
-    return this.user;
+      const saved = this.client.session.save();
+      await setSavedSession(saved);
+      this.user = user || await this.client.getMe();
+      await setSavedUserProfile(this.user);
+      this.isConnected = true;
+      this.notifyStatus();
+      return this.user;
+    } catch (err) {
+      console.error("Failed to sign in with password:", err);
+      throw err;
+    }
   }
 
   async destroy() {
