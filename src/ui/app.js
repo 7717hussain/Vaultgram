@@ -5,7 +5,7 @@ import { MediaBrowser } from "./mediaBrowser.js";
 import { AuthModal } from "./authModal.js";
 import { ShortcutsModal } from "./shortcutsModal.js";
 import { tgStreamClient } from "../telegram/client.js";
-import { getSavedSession, clearSession } from "../telegram/session.js";
+import { getSavedSession, clearSavedSession } from "../telegram/session.js";
 import { createIcon, Icons } from "./icons.js";
 
 export class App {
@@ -281,9 +281,10 @@ export class App {
     input.click();
   }
 
-  handleLogout() {
+  async handleLogout() {
     if (confirm("Are you sure you want to log out and clear all saved credentials and indexed drive cache?")) {
-      clearSession();
+      await tgStreamClient.destroy();
+      await clearSavedSession();
       localStorage.removeItem("televault_selected_channels");
       localStorage.removeItem("televault_custom_folders");
       localStorage.removeItem("televault_pinned_ids");

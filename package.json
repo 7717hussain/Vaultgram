@@ -9,7 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "idb-keyval": "^6.3.0",
     "lucide": "^1.31.0",
+    "qrcode": "^1.5.4",
     "telegram": "^2.26.22",
     "vidstack": "^1.12.12"
   },

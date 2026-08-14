@@ -3,7 +3,7 @@ import { StringSession } from "telegram/sessions";
 import { ConnectionTCPObfuscated } from "telegram/network";
 import { PromisedWebSockets } from "telegram/extensions";
 import { computeCheck } from "telegram/Password";
-import { getSavedSession, getTgConfig, saveSession } from "./session.js";
+import { getSavedSession, getTgConfig, setSavedSession, setSavedUserProfile } from "./session.js";
 
 // Official Telegram WebSocket Gateways for all 5 DCs
 const DC_WEBSOCKET_DOMAINS = {
@@ -122,7 +122,8 @@ class TgStreamClient {
         
         const currentSession = this.client.session.save();
         if (currentSession) {
-          saveSession(currentSession);
+          await setSavedSession(currentSession);
+          await setSavedUserProfile(this.user);
         }
         
         this.notifyStatus();
@@ -143,9 +144,46 @@ class TgStreamClient {
     }
   }
 
-  // 1. Send Login Code via Phone Number
+  // 1. QR Code Login Flow
+  async startQrLogin(onQrUrl, onNeeds2FA) {
+    const config = await getTgConfig();
+    this.client = this.createClient("");
+    await this.client.connect();
+
+    try {
+      const user = await this.client.signInUserWithQrCode(
+        {
+          apiId: config.apiId,
+          apiHash: config.apiHash,
+        },
+        {
+          qrCode: async (qr) => {
+            const tgUrl = `tg://login?token=${encodeURIComponent(qr.token.toString("base64url"))}`;
+            if (onQrUrl) onQrUrl(tgUrl);
+          },
+          password: async (hint) => {
+            if (onNeeds2FA) return await onNeeds2FA(hint);
+            return prompt("Enter your 2FA Password:");
+          },
+        }
+      );
+
+      const saved = this.client.session.save();
+      await setSavedSession(saved);
+      this.user = user;
+      await setSavedUserProfile(user);
+      this.isConnected = true;
+      this.notifyStatus();
+      return { session: saved, user };
+    } catch (err) {
+      console.error("QR Login error:", err);
+      throw err;
+    }
+  }
+
+  // 2. Send Login Code via Phone Number
   async sendCode(phoneNumber) {
-    const config = getTgConfig();
+    const config = await getTgConfig();
     this.phoneNumber = phoneNumber.trim();
     this.client = this.createClient("");
     await this.client.connect();
@@ -162,7 +200,7 @@ class TgStreamClient {
     return res;
   }
 
-  // 2. Sign In with Phone Code (using direct TL Api.auth.SignIn)
+  // 3. Sign In with Phone Code (using direct TL Api.auth.SignIn)
   async signIn(phoneCode, password = "") {
     if (!this.client || !this.phoneCodeHash || !this.phoneNumber) {
       throw new Error("Please request a login code first.");
@@ -179,8 +217,9 @@ class TgStreamClient {
 
       // Successfully signed in
       const saved = this.client.session.save();
-      saveSession(saved);
+      await setSavedSession(saved);
       this.user = await this.client.getMe();
+      await setSavedUserProfile(this.user);
       this.isConnected = true;
       this.notifyStatus();
       return this.user;
@@ -189,35 +228,54 @@ class TgStreamClient {
       
       // Handle 2FA Password Requirement
       if (errMsg.includes("SESSION_PASSWORD_NEEDED")) {
-        return await this.handle2FAPassword(password);
+        if (password) {
+          return await this.signInWithPassword(password);
+        }
+        throw new Error("SESSION_PASSWORD_NEEDED");
       }
       
       throw err;
     }
   }
 
-  // 3. Handle 2FA Password Verification
-  async handle2FAPassword(password = "") {
-    const pass = password || prompt("Your account has 2FA enabled. Enter your 2FA Password:") || "";
-    if (!pass) {
+  // 4. Handle 2FA Password Verification
+  async signInWithPassword(password) {
+    if (!password) {
       throw new Error("2FA Password is required.");
     }
 
     const passwordSrpResult = await this.client.invoke(new Api.account.GetPassword());
-    const passwordSrpCheck = await computeCheck(passwordSrpResult, pass);
+    const passwordSrpCheck = await computeCheck(passwordSrpResult, password);
     
-    const checkResult = await this.client.invoke(
+    await this.client.invoke(
       new Api.auth.CheckPassword({
         password: passwordSrpCheck,
       })
     );
 
     const saved = this.client.session.save();
-    saveSession(saved);
+    await setSavedSession(saved);
     this.user = await this.client.getMe();
+    await setSavedUserProfile(this.user);
     this.isConnected = true;
     this.notifyStatus();
     return this.user;
+  }
+
+  async destroy() {
+    try {
+      if (this.client) {
+        await this.client.disconnect();
+        await this.client.destroy();
+      }
+    } catch (e) {
+      console.warn("Client destroy warning:", e);
+    }
+    this.client = null;
+    this.isConnected = false;
+    this.isConnecting = false;
+    this.user = null;
+    this.notifyStatus();
   }
 
   // 4. Fetch and categorize user's channels (Public vs Private)

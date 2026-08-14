@@ -44,7 +44,12 @@ import {
   Copy,
   ExternalLink,
   ShieldAlert,
-  Loader2
+  Loader2,
+  QrCode,
+  Phone,
+  KeyRound,
+  ShieldCheck,
+  ArrowRight
 } from 'lucide';
 
 /**
@@ -130,5 +135,10 @@ export const Icons = {
   Copy,
   ExternalLink,
   ShieldAlert,
-  Loader2
+  Loader2,
+  QrCode,
+  Phone,
+  KeyRound,
+  ShieldCheck,
+  ArrowRight
 };
