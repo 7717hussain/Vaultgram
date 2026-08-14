@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "lucide": "^1.31.0",
     "telegram": "^2.26.22",
     "vidstack": "^1.12.12"
   },

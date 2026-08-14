@@ -34,13 +34,13 @@
   --brand-blue: 217.2 91.2% 59.8%;
   --brand-emerald: 142.1 76.2% 36.3%;
 
-  /* Fonts */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  /* Fonts: Geist Sans + Geist Mono */
+  --font-sans: 'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'Geist Mono', monospace;
 
   /* Layout dimensions */
-  --header-height: 54px;
-  --sidebar-width: 340px;
+  --header-height: 52px;
+  --sidebar-width: 280px;
 }
 
 *, *::before, *::after {

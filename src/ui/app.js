@@ -6,6 +6,7 @@ import { AuthModal } from "./authModal.js";
 import { ShortcutsModal } from "./shortcutsModal.js";
 import { tgStreamClient } from "../telegram/client.js";
 import { getSavedSession } from "../telegram/session.js";
+import { createIcon, Icons } from "./icons.js";
 
 export class App {
   constructor(rootEl) {
@@ -15,7 +16,7 @@ export class App {
     this.mediaBrowser = null;
     this.authModal = null;
     this.shortcutsModal = null;
-    this.currentPlayingIndex = -1;
+    this.sidebarCollapsed = false;
 
     this.renderLayout();
     this.initComponents();
@@ -29,17 +30,31 @@ export class App {
         <!-- Top Application Navbar -->
         <header class="app-header">
           <div class="header-left">
-            <div class="app-logo">
-              <span class="logo-symbol">&#x25B6;</span>
-              <span class="logo-text">Vaultgram</span>
-            </div>
-            <div class="header-stats" id="header-stats">Loading Telegram Vaults...</div>
+            <!-- Sidebar Minimize / Toggle Button -->
+            <button class="sidebar-toggle-btn" id="btn-toggle-sidebar" title="Toggle Sidebar">
+              <span class="toggle-icon-holder"></span>
+            </button>
+            <div class="app-brand-name">Vaultgram</div>
+          </div>
+
+          <!-- Centered Global Search Input -->
+          <div class="header-search-container">
+            <span class="header-search-icon" id="search-icon-holder"></span>
+            <input 
+              type="text" 
+              class="header-search-input" 
+              id="header-global-search" 
+              placeholder="Search all files, documents, and videos across channels (/)..."
+            />
+            <button class="header-search-clear hidden" id="header-search-clear" title="Clear Search">
+              <span class="clear-icon-holder"></span>
+            </button>
           </div>
 
           <div class="header-right">
             <!-- Shortcuts Help Button -->
             <button class="tg-status-btn" id="shortcuts-help-btn" title="Keyboard Shortcuts (?)">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="8"/><line x1="10" y1="8" x2="10" y2="8"/><line x1="14" y1="8" x2="14" y2="8"/><line x1="18" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="6" y2="12"/><line x1="10" y1="12" x2="10" y2="12"/><line x1="14" y1="12" x2="14" y2="12"/><line x1="18" y1="12" x2="18" y2="12"/><line x1="7" y1="16" x2="17" y2="16"/></svg>
+              <span class="keyboard-icon-holder"></span>
               <span>Hotkeys</span>
             </button>
 
@@ -51,18 +66,18 @@ export class App {
           </div>
         </header>
 
-        <!-- Main Body: Sidebar + Player & Media Explorer Area -->
+        <!-- Main Body: Sidebar + Main Content Grid Stage -->
         <div class="app-body">
-          <!-- Sidebar Container -->
+          <!-- Sidebar Container (Channels Only) -->
           <div class="sidebar-container" id="sidebar-container"></div>
 
-          <!-- Main Content Stage -->
+          <!-- Main Content Stage (Folders & Files Grid Explorer) -->
           <main class="content-stage">
-            <!-- Video Player Area -->
-            <section class="player-section" id="player-container"></section>
+            <!-- Video Player is retained in code and can be mounted dynamically when needed -->
+            <div id="player-container" class="hidden"></div>
 
-            <!-- Media Browser & Explorer -->
-            <section class="lectures-section" id="media-browser-container"></section>
+            <!-- Media Explorer (Folders & Files Grid) -->
+            <div id="media-browser-container"></div>
           </main>
         </div>
 
@@ -71,9 +86,58 @@ export class App {
         <div id="shortcuts-modal-container"></div>
       </div>
     `;
+
+    // Populate Lucide Icons safely into DOM
+    const toggleIconHolder = this.root.querySelector(".toggle-icon-holder");
+    if (toggleIconHolder) toggleIconHolder.appendChild(createIcon(Icons.PanelLeft, { size: 16 }));
+
+    const searchIconHolder = this.root.querySelector("#search-icon-holder");
+    if (searchIconHolder) searchIconHolder.appendChild(createIcon(Icons.Search, { size: 14 }));
+
+    const clearIconHolder = this.root.querySelector(".clear-icon-holder");
+    if (clearIconHolder) clearIconHolder.appendChild(createIcon(Icons.X, { size: 14 }));
+
+    const keyboardIconHolder = this.root.querySelector(".keyboard-icon-holder");
+    if (keyboardIconHolder) keyboardIconHolder.appendChild(createIcon(Icons.Keyboard, { size: 14 }));
   }
 
   initComponents() {
+    const sidebarContainer = this.root.querySelector("#sidebar-container");
+    const toggleSidebarBtn = this.root.querySelector("#btn-toggle-sidebar");
+    const searchInput = this.root.querySelector("#header-global-search");
+    const searchClear = this.root.querySelector("#header-search-clear");
+
+    // Sidebar Minimize / Toggle Handler
+    toggleSidebarBtn.onclick = () => {
+      this.sidebarCollapsed = !this.sidebarCollapsed;
+      sidebarContainer.classList.toggle("collapsed", this.sidebarCollapsed);
+      
+      const holder = this.root.querySelector(".toggle-icon-holder");
+      if (holder) {
+        while (holder.firstChild) holder.removeChild(holder.firstChild);
+        holder.appendChild(
+          createIcon(this.sidebarCollapsed ? Icons.PanelLeft : Icons.PanelLeftClose, { size: 16 })
+        );
+      }
+    };
+
+    // Header Global Search Handler
+    searchInput.oninput = (e) => {
+      const q = e.target.value.trim();
+      searchClear.classList.toggle("hidden", !q);
+      if (this.mediaBrowser) {
+        this.mediaBrowser.setSearchQuery(q);
+      }
+    };
+
+    searchClear.onclick = () => {
+      searchInput.value = "";
+      searchClear.classList.add("hidden");
+      if (this.mediaBrowser) {
+        this.mediaBrowser.setSearchQuery("");
+      }
+    };
+
     // 1. Auth & Shortcuts Modals
     this.authModal = new AuthModal(
       this.root.querySelector("#auth-modal-container"),
@@ -108,27 +172,22 @@ export class App {
       }
     });
 
-    // 2. Video Player
+    // 2. Retained Video Player (hidden in background)
     this.player = new VideoPlayer(
       this.root.querySelector("#player-container"),
-      () => this.playNextMedia(),
-      () => this.playPrevMedia()
+      () => {},
+      () => {}
     );
 
-    // 3. Media Browser
+    // 3. Media Browser (Folders + Files Grid Explorer)
     this.mediaBrowser = new MediaBrowser(this.root.querySelector("#media-browser-container"), {
       onPlayMedia: (item) => {
         this.playMedia(item);
       },
     });
 
-    // 4. Dynamic Sidebar
-    this.sidebar = new Sidebar(this.root.querySelector("#sidebar-container"), {
-      onSelectItem: ({ type, query }) => {
-        if (type === "search") {
-          this.mediaBrowser.setSearchQuery(query);
-        }
-      },
+    // 4. Sidebar (Channels Only)
+    this.sidebar = new Sidebar(sidebarContainer, {
       onChannelChange: async (channelId) => {
         if (channelId !== "all") {
           await this.loadChannelMedia(channelId);
@@ -142,7 +201,6 @@ export class App {
 
     if (!hasSession) {
       this.authModal.show();
-      this.root.querySelector("#header-stats").textContent = "Please sign in to Telegram";
       return;
     }
 
@@ -154,7 +212,6 @@ export class App {
 
       if (!connected) {
         this.authModal.show();
-        this.root.querySelector("#header-stats").textContent = "Session expired or invalid";
         return;
       }
 
@@ -167,7 +224,6 @@ export class App {
 
   async syncUserVaults(selectedIds = null) {
     try {
-      this.root.querySelector("#header-stats").textContent = "Discovering channels...";
       const { publicChannels, privateChannels } = await tgStreamClient.getUserChannels();
       const allChannels = [...publicChannels, ...privateChannels];
 
@@ -178,8 +234,6 @@ export class App {
 
       vaultStore.setChannels(filteredChannels);
 
-      this.root.querySelector("#header-stats").textContent = `${filteredChannels.length} Channels Synced • 100% Client-Side`;
-
       // Preload the first few channels into the cache
       const preloads = filteredChannels.slice(0, 5);
       for (const ch of preloads) {
@@ -187,7 +241,6 @@ export class App {
       }
     } catch (err) {
       console.error("Error syncing channels:", err);
-      this.root.querySelector("#header-stats").textContent = "Error discovering channels";
     }
   }
 
@@ -203,28 +256,12 @@ export class App {
   }
 
   playMedia(item) {
-    this.player.loadMedia(item, true);
-    this.mediaBrowser.setPlayingId(item.id);
-    const list = vaultStore.getFilteredItems();
-    this.currentPlayingIndex = list.findIndex((i) => i.id === item.id);
-  }
-
-  playNextMedia() {
-    const list = vaultStore.getFilteredItems();
-    if (this.currentPlayingIndex >= 0 && this.currentPlayingIndex < list.length - 1) {
-      this.playMedia(list[this.currentPlayingIndex + 1]);
-    }
-  }
-
-  playPrevMedia() {
-    const list = vaultStore.getFilteredItems();
-    if (this.currentPlayingIndex > 0) {
-      this.playMedia(list[this.currentPlayingIndex - 1]);
+    if (item.category === "videos" || item.category === "audio") {
+      this.player.loadMedia(item, true);
     }
   }
 
   async onAuthSuccess(selectedChannels = []) {
-    console.log("Auth success callback triggered.");
     await this.syncUserVaults(selectedChannels);
   }
 
@@ -233,70 +270,15 @@ export class App {
       const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : "";
       if (activeTag === "input" || activeTag === "textarea") return;
 
-      const key = e.key.toLowerCase();
-
       if (e.key === "?" || (e.shiftKey && e.key === "/")) {
         e.preventDefault();
         if (this.shortcutsModal) this.shortcutsModal.toggle();
         return;
       }
 
-      if (key === "k" || e.key === " ") {
-        e.preventDefault();
-        const vds = this.player?.player;
-        if (vds) {
-          if (vds.paused) vds.play();
-          else vds.pause();
-        }
-        return;
-      }
-
-      if (key === "j" || e.key === "ArrowLeft") {
-        e.preventDefault();
-        const vds = this.player?.player;
-        if (vds) vds.currentTime = Math.max(0, vds.currentTime - 10);
-        return;
-      }
-
-      if (key === "l" || e.key === "ArrowRight") {
-        e.preventDefault();
-        const vds = this.player?.player;
-        if (vds) vds.currentTime = Math.min(vds.duration || 0, vds.currentTime + 10);
-        return;
-      }
-
-      if (key === "f") {
-        e.preventDefault();
-        const vds = this.player?.player;
-        if (vds) {
-          if (vds.fullscreen) vds.exitFullscreen();
-          else vds.enterFullscreen();
-        }
-        return;
-      }
-
-      if (key === "m") {
-        e.preventDefault();
-        const vds = this.player?.player;
-        if (vds) vds.muted = !vds.muted;
-        return;
-      }
-
-      if (key === "n") {
-        e.preventDefault();
-        this.playNextMedia();
-        return;
-      }
-
-      if (key === "p") {
-        e.preventDefault();
-        this.playPrevMedia();
-        return;
-      }
-
       if (e.key === "/") {
         e.preventDefault();
-        const searchInp = this.root.querySelector("#global-search-input");
+        const searchInp = this.root.querySelector("#header-global-search");
         if (searchInp) {
           searchInp.focus();
           searchInp.select();

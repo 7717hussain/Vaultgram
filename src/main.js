@@ -5,6 +5,7 @@ import "./styles/layout.css";
 import "./styles/sidebar.css";
 import "./styles/player.css";
 import "./styles/auth.css";
+import "./styles/explorer.css";
 import "./styles/animations.css";
 
 // 1. Register Service Worker for MTProto Stream Interception

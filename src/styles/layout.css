@@ -3,67 +3,121 @@
   flex-direction: column;
   height: 100vh;
   width: 100vw;
-  background-color: var(--bg-main);
+  background-color: hsl(var(--background));
+  overflow: hidden;
 }
 
 /* shadcn/ui Header Navbar */
 .app-header {
   height: var(--header-height);
-  background-color: rgba(9, 9, 11, 0.8);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background-color: hsl(var(--background));
   border-bottom: 1px solid hsl(var(--border));
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 16px;
   flex-shrink: 0;
   z-index: 40;
+  gap: 16px;
 }
 
 .header-left {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
+  min-width: 0;
 }
 
-.app-logo {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-weight: 600;
-  font-size: 0.925rem;
-  letter-spacing: -0.015em;
-  color: hsl(var(--foreground));
-}
-
-.logo-symbol {
-  width: 22px;
-  height: 22px;
-  background: hsl(var(--foreground));
-  color: hsl(var(--background));
+/* Sidebar Toggle Icon Button (Replaces ugly logo) */
+.sidebar-toggle-btn {
+  width: 34px;
+  height: 34px;
   border-radius: var(--radius);
+  background: transparent;
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.75rem;
-  font-weight: 800;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
-.header-stats {
-  font-size: 0.75rem;
-  font-weight: 500;
+.sidebar-toggle-btn:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--ring));
+}
+
+.app-brand-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: hsl(var(--foreground));
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Center Global Search Bar in Header */
+.header-search-container {
+  flex: 1;
+  max-width: 480px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.header-search-icon {
+  position: absolute;
+  left: 10px;
+  width: 14px;
+  height: 14px;
   color: hsl(var(--muted-foreground));
-  padding: 3px 10px;
-  background: hsl(var(--secondary));
-  border: 1px solid hsl(var(--border));
+  pointer-events: none;
+}
+
+.header-search-input {
+  width: 100%;
+  height: 34px;
+  background-color: hsl(var(--muted) / 0.5);
+  border: 1px solid hsl(var(--input));
   border-radius: var(--radius);
+  padding: 0 32px 0 32px;
+  font-size: 0.8125rem;
+  color: hsl(var(--foreground));
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.header-search-input::placeholder {
+  color: hsl(var(--muted-foreground));
+}
+
+.header-search-input:focus {
+  background-color: hsl(var(--background));
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+
+.header-search-clear {
+  position: absolute;
+  right: 8px;
+  background: none;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .header-right {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 /* shadcn Status Button */
@@ -71,14 +125,14 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 6px;
   background-color: transparent;
   border: 1px solid hsl(var(--border));
   color: hsl(var(--foreground));
-  font-size: 0.8rem;
+  font-size: 0.775rem;
   font-weight: 500;
   height: 32px;
-  padding: 0 12px;
+  padding: 0 10px;
   border-radius: var(--radius);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -116,8 +170,10 @@
   flex: 1;
   overflow: hidden;
   height: calc(100vh - var(--header-height));
+  position: relative;
 }
 
+/* Sidebar Container (Collapsible) */
 .sidebar-container {
   width: var(--sidebar-width);
   height: 100%;
@@ -126,8 +182,18 @@
   border-right: 1px solid hsl(var(--border));
   display: flex;
   flex-direction: column;
+  transition: width 0.2s cubic-bezier(0.4, 0, 0.2, 1), margin-left 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 20;
 }
 
+.sidebar-container.collapsed {
+  width: 0px;
+  margin-left: calc(-1 * var(--sidebar-width));
+  overflow: hidden;
+  border-right: none;
+}
+
+/* Main Content Stage */
 .content-stage {
   flex: 1;
   height: 100%;
@@ -136,16 +202,5 @@
   flex-direction: column;
   background-color: hsl(var(--background));
   position: relative;
-}
-
-.player-section {
-  width: 100%;
-  background-color: #000;
-  border-bottom: 1px solid hsl(var(--border));
-  flex-shrink: 0;
-}
-
-.lectures-section {
-  flex: 1;
   padding: 24px 32px;
 }
