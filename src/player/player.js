@@ -6,11 +6,11 @@ import 'vidstack/player/styles/default/layouts/video.css';
 import { ProgressTracker } from "./progressTracker.js";
 
 export class VideoPlayer {
-  constructor(containerEl, onNextLecture = null, onPrevLecture = null) {
+  constructor(containerEl, onNextMedia = null, onPrevMedia = null) {
     this.container = containerEl;
-    this.onNextLecture = onNextLecture;
-    this.onPrevLecture = onPrevLecture;
-    this.currentLecture = null;
+    this.onNextMedia = onNextMedia;
+    this.onPrevMedia = onPrevMedia;
+    this.currentMedia = null;
     this.player = null;
     this.saveInterval = null;
 
@@ -23,7 +23,7 @@ export class VideoPlayer {
       <div class="vds-container-wrapper">
         <media-player
           id="vidstack-player"
-          title="Select a lecture from the sidebar"
+          title="Select a video to stream from Telegram"
           src=""
           view-type="video"
           stream-type="on-demand"
@@ -46,16 +46,16 @@ export class VideoPlayer {
     // Listen to Vidstack player events
     this.player.addEventListener("time-update", (event) => {
       const { currentTime, duration } = event.detail;
-      if (this.currentLecture && currentTime > 0) {
-        ProgressTracker.set(this.currentLecture.id, currentTime, duration);
+      if (this.currentMedia && currentTime > 0) {
+        ProgressTracker.set(this.currentMedia.id, currentTime, duration);
       }
     });
 
     this.player.addEventListener("ended", () => {
-      if (this.currentLecture) {
-        ProgressTracker.markCompleted(this.currentLecture.id, true);
+      if (this.currentMedia) {
+        ProgressTracker.markCompleted(this.currentMedia.id, true);
       }
-      if (this.onNextLecture) this.onNextLecture();
+      if (this.onNextMedia) this.onNextMedia();
     });
 
     this.player.addEventListener("play", () => {
@@ -67,24 +67,24 @@ export class VideoPlayer {
     });
   }
 
-  loadLecture(lecture, autoPlay = true) {
-    this.currentLecture = lecture;
+  loadMedia(item, autoPlay = true) {
+    this.currentMedia = item;
     if (!this.player) return;
 
-    this.player.setAttribute("title", lecture.title);
+    this.player.setAttribute("title", item.fileName || item.title);
 
     // Telegram MTProto stream URL intercepted by Service Worker
-    const streamUrl = `/stream/${lecture.channelId}/${lecture.messageId}?size=${lecture.fileSize}&mime=${encodeURIComponent(
-      lecture.mimeType || "video/mp4"
+    const streamUrl = item.streamUrl || `/stream/${item.channelId}/${item.messageId}?size=${item.size}&mime=${encodeURIComponent(
+      item.mimeType || "video/mp4"
     )}`;
 
     this.player.src = {
       src: streamUrl,
-      type: "video/mp4",
+      type: item.mimeType?.startsWith("video/") ? "video/mp4" : item.mimeType || "video/mp4",
     };
 
     // Auto-resume from saved progress timestamp
-    const saved = ProgressTracker.get(lecture.id);
+    const saved = ProgressTracker.get(item.id);
     if (saved && saved.time > 5) {
       this.player.currentTime = saved.time;
     }
@@ -100,8 +100,8 @@ export class VideoPlayer {
   }
 
   saveCurrentProgress() {
-    if (this.currentLecture && this.player && this.player.currentTime > 0) {
-      ProgressTracker.set(this.currentLecture.id, this.player.currentTime, this.player.duration);
+    if (this.currentMedia && this.player && this.player.currentTime > 0) {
+      ProgressTracker.set(this.currentMedia.id, this.player.currentTime, this.player.duration);
     }
   }
 

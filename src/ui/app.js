@@ -1,26 +1,26 @@
-import { catalogStore } from "../catalog/catalogStore.js";
+import { vaultStore } from "../catalog/vaultStore.js";
 import { VideoPlayer } from "../player/player.js";
 import { Sidebar } from "./sidebar.js";
-import { LectureList } from "./lectureList.js";
+import { MediaBrowser } from "./mediaBrowser.js";
 import { AuthModal } from "./authModal.js";
 import { ShortcutsModal } from "./shortcutsModal.js";
 import { tgStreamClient } from "../telegram/client.js";
+import { getSavedSession } from "../telegram/session.js";
 
 export class App {
   constructor(rootEl) {
     this.root = rootEl;
     this.player = null;
     this.sidebar = null;
-    this.lectureList = null;
+    this.mediaBrowser = null;
     this.authModal = null;
     this.shortcutsModal = null;
-    this.currentLectureList = [];
-    this.currentLectureIndex = -1;
+    this.currentPlayingIndex = -1;
 
     this.renderLayout();
     this.initComponents();
     this.bindGlobalShortcuts();
-    this.loadData();
+    this.loadUserData();
   }
 
   renderLayout() {
@@ -33,7 +33,7 @@ export class App {
               <span class="logo-symbol">&#x25B6;</span>
               <span class="logo-text">Vaultgram</span>
             </div>
-            <div class="header-stats" id="header-stats">Loading catalog...</div>
+            <div class="header-stats" id="header-stats">Loading Telegram Vaults...</div>
           </div>
 
           <div class="header-right">
@@ -51,7 +51,7 @@ export class App {
           </div>
         </header>
 
-        <!-- Main Body: Sidebar + Player & Lectures Area -->
+        <!-- Main Body: Sidebar + Player & Media Explorer Area -->
         <div class="app-body">
           <!-- Sidebar Container -->
           <div class="sidebar-container" id="sidebar-container"></div>
@@ -61,8 +61,8 @@ export class App {
             <!-- Video Player Area -->
             <section class="player-section" id="player-container"></section>
 
-            <!-- Chapter Lectures Browser -->
-            <section class="lectures-section" id="lectures-container"></section>
+            <!-- Media Browser & Explorer -->
+            <section class="lectures-section" id="media-browser-container"></section>
           </main>
         </div>
 
@@ -77,7 +77,7 @@ export class App {
     // 1. Auth & Shortcuts Modals
     this.authModal = new AuthModal(
       this.root.querySelector("#auth-modal-container"),
-      () => this.onAuthSuccess()
+      (selectedChannels) => this.onAuthSuccess(selectedChannels)
     );
 
     this.shortcutsModal = new ShortcutsModal(
@@ -111,84 +111,125 @@ export class App {
     // 2. Video Player
     this.player = new VideoPlayer(
       this.root.querySelector("#player-container"),
-      () => this.playNextLecture(),
-      () => this.playPrevLecture()
+      () => this.playNextMedia(),
+      () => this.playPrevMedia()
     );
 
-    // 3. Lecture List
-    this.lectureList = new LectureList(this.root.querySelector("#lectures-container"), {
-      onPlayLecture: (lec) => {
-        this.playLecture(lec);
+    // 3. Media Browser
+    this.mediaBrowser = new MediaBrowser(this.root.querySelector("#media-browser-container"), {
+      onPlayMedia: (item) => {
+        this.playMedia(item);
       },
     });
 
-    // 4. Sidebar
+    // 4. Dynamic Sidebar
     this.sidebar = new Sidebar(this.root.querySelector("#sidebar-container"), {
-      onSelectChapter: (chapter, batch, subject, autoPlayItemId) => {
-        this.currentLectureList = chapter.lectures;
-        this.lectureList.setChapter(chapter, batch, subject, autoPlayItemId);
+      onSelectItem: ({ type, query }) => {
+        if (type === "search") {
+          this.mediaBrowser.setSearchQuery(query);
+        }
       },
-      onSelectSearchResult: (query, callback) => {
-        const results = catalogStore.search(query);
-        callback(results);
+      onChannelChange: async (channelId) => {
+        if (channelId !== "all") {
+          await this.loadChannelMedia(channelId);
+        }
       },
     });
   }
 
-  async loadData() {
+  async loadUserData() {
+    const hasSession = !!getSavedSession();
+
+    if (!hasSession) {
+      this.authModal.show();
+      this.root.querySelector("#header-stats").textContent = "Please sign in to Telegram";
+      return;
+    }
+
     try {
-      const catalog = await catalogStore.load();
-      this.sidebar.setData(catalog.batches);
+      const connected = await tgStreamClient.init().catch((e) => {
+        console.log("TG auto-init notice:", e);
+        return false;
+      });
 
-      const stats = catalogStore.getStats();
-      this.root.querySelector("#header-stats").textContent = `${stats.totalLectures} Video Lectures &bull; 100% Free MTProto`;
-
-      // Check if session exists; if not, immediately present the login page
-      const hasSession = !!getSavedSession();
-      if (!hasSession) {
+      if (!connected) {
         this.authModal.show();
-      } else {
-        const connected = await tgStreamClient.init().catch((e) => {
-          console.log("TG auto-init notice:", e);
-          return false;
-        });
-        if (!connected) {
-          this.authModal.show();
-        }
+        this.root.querySelector("#header-stats").textContent = "Session expired or invalid";
+        return;
+      }
+
+      await this.syncUserVaults();
+    } catch (err) {
+      console.error("Error initializing user data:", err);
+      this.authModal.show();
+    }
+  }
+
+  async syncUserVaults(selectedIds = null) {
+    try {
+      this.root.querySelector("#header-stats").textContent = "Discovering channels...";
+      const { publicChannels, privateChannels } = await tgStreamClient.getUserChannels();
+      const allChannels = [...publicChannels, ...privateChannels];
+
+      let filteredChannels = allChannels;
+      if (selectedIds && selectedIds.length > 0) {
+        filteredChannels = allChannels.filter((c) => selectedIds.includes(c.id));
+      }
+
+      vaultStore.setChannels(filteredChannels);
+
+      this.root.querySelector("#header-stats").textContent = `${filteredChannels.length} Channels Synced • 100% Client-Side`;
+
+      // Preload the first few channels into the cache
+      const preloads = filteredChannels.slice(0, 5);
+      for (const ch of preloads) {
+        this.loadChannelMedia(ch.id).catch((e) => console.log(`Load channel ${ch.id} notice:`, e));
       }
     } catch (err) {
-      console.error("Error loading catalog:", err);
-      this.root.querySelector("#header-stats").textContent = "Error loading catalog.json";
+      console.error("Error syncing channels:", err);
+      this.root.querySelector("#header-stats").textContent = "Error discovering channels";
     }
   }
 
-  playLecture(lec) {
-    this.player.loadLecture(lec, true);
-    this.lectureList.setPlayingId(lec.id);
-    this.currentLectureIndex = this.currentLectureList.findIndex((l) => l.id === lec.id);
-  }
+  async loadChannelMedia(channelId) {
+    if (vaultStore.channelMediaCache.has(String(channelId))) return;
 
-  playNextLecture() {
-    if (this.currentLectureIndex >= 0 && this.currentLectureIndex < this.currentLectureList.length - 1) {
-      const nextLec = this.currentLectureList[this.currentLectureIndex + 1];
-      this.playLecture(nextLec);
+    try {
+      const items = await tgStreamClient.getChannelMediaMessages(channelId, 100);
+      vaultStore.cacheChannelItems(channelId, items);
+    } catch (err) {
+      console.error(`Failed to fetch media for channel ${channelId}:`, err);
     }
   }
 
-  playPrevLecture() {
-    if (this.currentLectureIndex > 0) {
-      const prevLec = this.currentLectureList[this.currentLectureIndex - 1];
-      this.playLecture(prevLec);
+  playMedia(item) {
+    this.player.loadMedia(item, true);
+    this.mediaBrowser.setPlayingId(item.id);
+    const list = vaultStore.getFilteredItems();
+    this.currentPlayingIndex = list.findIndex((i) => i.id === item.id);
+  }
+
+  playNextMedia() {
+    const list = vaultStore.getFilteredItems();
+    if (this.currentPlayingIndex >= 0 && this.currentPlayingIndex < list.length - 1) {
+      this.playMedia(list[this.currentPlayingIndex + 1]);
     }
   }
 
-  onAuthSuccess() {
-    console.log("Telegram client authenticated successfully.");
+  playPrevMedia() {
+    const list = vaultStore.getFilteredItems();
+    if (this.currentPlayingIndex > 0) {
+      this.playMedia(list[this.currentPlayingIndex - 1]);
+    }
+  }
+
+  async onAuthSuccess(selectedChannels = []) {
+    console.log("Auth success callback triggered.");
+    await this.syncUserVaults(selectedChannels);
   }
 
   bindGlobalShortcuts() {
     window.addEventListener("keydown", (e) => {
-      // Don't trigger shortcuts when user is typing in input fields
       const activeTag = document.activeElement ? document.activeElement.tagName.toLowerCase() : "";
       if (activeTag === "input" || activeTag === "textarea") return;
 
@@ -213,14 +254,14 @@ export class App {
       if (key === "j" || e.key === "ArrowLeft") {
         e.preventDefault();
         const vds = this.player?.player;
-        if (vds) vds.currentTime = Math.max(0, (vds.currentTime || 0) - 10);
+        if (vds) vds.currentTime = Math.max(0, vds.currentTime - 10);
         return;
       }
 
       if (key === "l" || e.key === "ArrowRight") {
         e.preventDefault();
         const vds = this.player?.player;
-        if (vds) vds.currentTime = Math.min(vds.duration || 0, (vds.currentTime || 0) + 10);
+        if (vds) vds.currentTime = Math.min(vds.duration || 0, vds.currentTime + 10);
         return;
       }
 
@@ -228,8 +269,8 @@ export class App {
         e.preventDefault();
         const vds = this.player?.player;
         if (vds) {
-          if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-          else vds.requestFullscreen().catch(() => {});
+          if (vds.fullscreen) vds.exitFullscreen();
+          else vds.enterFullscreen();
         }
         return;
       }
@@ -243,14 +284,23 @@ export class App {
 
       if (key === "n") {
         e.preventDefault();
-        this.playNextLecture();
+        this.playNextMedia();
         return;
       }
 
       if (key === "p") {
         e.preventDefault();
-        this.playPrevLecture();
+        this.playPrevMedia();
         return;
+      }
+
+      if (e.key === "/") {
+        e.preventDefault();
+        const searchInp = this.root.querySelector("#global-search-input");
+        if (searchInp) {
+          searchInp.focus();
+          searchInp.select();
+        }
       }
     });
   }

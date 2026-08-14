@@ -239,6 +239,105 @@ class TgStreamClient {
     return { publicChannels, privateChannels };
   }
 
+  // 5. Fetch media messages from a specific channel and classify file types
+  async getChannelMediaMessages(channelId, limit = 150) {
+    if (!this.client || !this.isConnected) {
+      await this.init();
+    }
+
+    const channelEntity = await this.getChannelEntity(channelId);
+    const messages = await this.client.getMessages(channelEntity, {
+      limit,
+    });
+
+    const items = [];
+
+    for (const msg of messages) {
+      if (!msg.media) continue;
+
+      let doc = null;
+      let isPhoto = false;
+
+      if (msg.media.document) {
+        doc = msg.media.document;
+      } else if (msg.media.photo) {
+        isPhoto = true;
+      }
+
+      if (!doc && !isPhoto) continue;
+
+      const messageId = msg.id;
+      let fileName = msg.file?.name || "";
+      const mimeType = doc?.mimeType || (isPhoto ? "image/jpeg" : "application/octet-stream");
+      const size = Number(doc?.size || 0);
+
+      // If no file name, infer from message text or format
+      if (!fileName) {
+        const textSnippet = (msg.message || "").trim().slice(0, 35).replace(/[^\w\s-]/g, "");
+        if (textSnippet) {
+          fileName = textSnippet;
+        } else if (isPhoto) {
+          fileName = `photo_${messageId}.jpg`;
+        } else if (mimeType.includes("video")) {
+          fileName = `video_${messageId}.mp4`;
+        } else if (mimeType.includes("audio")) {
+          fileName = `audio_${messageId}.mp3`;
+        } else {
+          fileName = `file_${messageId}`;
+        }
+      }
+
+      // Categorize into standard File Types (video, audio, archive, image, document, other)
+      const ext = fileName.split(".").pop().toLowerCase();
+      let category = "document";
+
+      if (
+        mimeType.startsWith("video/") ||
+        ["mp4", "mkv", "webm", "avi", "mov", "flv", "m4v", "ts"].includes(ext)
+      ) {
+        category = "videos";
+      } else if (
+        mimeType.startsWith("audio/") ||
+        ["mp3", "m4a", "wav", "flac", "ogg", "aac", "opus"].includes(ext)
+      ) {
+        category = "audio";
+      } else if (
+        ["zip", "rar", "7z", "tar", "gz", "bz2", "xz", "iso"].includes(ext) ||
+        mimeType.includes("zip") ||
+        mimeType.includes("compressed") ||
+        mimeType.includes("tar")
+      ) {
+        category = "archives";
+      } else if (
+        isPhoto ||
+        mimeType.startsWith("image/") ||
+        ["jpg", "jpeg", "png", "webp", "gif", "svg", "bmp"].includes(ext)
+      ) {
+        category = "images";
+      } else if (["pdf", "epub", "doc", "docx", "txt", "ppt", "pptx"].includes(ext)) {
+        category = "documents";
+      } else {
+        category = "other";
+      }
+
+      items.push({
+        id: `${channelId}_${messageId}`,
+        messageId,
+        channelId: String(channelId),
+        title: fileName,
+        fileName,
+        caption: msg.message || "",
+        date: msg.date,
+        mimeType,
+        size,
+        category,
+        streamUrl: `/stream/${channelId}/${messageId}?size=${size}&mime=${encodeURIComponent(mimeType)}`,
+      });
+    }
+
+    return items;
+  }
+
   async getChannelEntity(channelId) {
     const key = String(channelId);
     if (this.channelEntityCache.has(key)) {
