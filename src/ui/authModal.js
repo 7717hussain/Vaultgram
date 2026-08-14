@@ -174,7 +174,7 @@ export class AuthModal {
       btnSendCode.disabled = true;
       btnSendCode.textContent = "Sending Code...";
       try {
-        const res = await tgStreamClient.sendPhoneCode(phone);
+        const res = await tgStreamClient.sendCode(phone);
         this.phoneCodeHash = res.phoneCodeHash;
         this.phoneNumber = phone;
         this.showAlert("Code sent! Check your Telegram messages.", "success");
@@ -217,7 +217,7 @@ export class AuthModal {
       btnSignIn.disabled = true;
       btnSignIn.textContent = "Signing In...";
       try {
-        await tgStreamClient.signInWithPhone(this.phoneNumber, code, this.phoneCodeHash);
+        await tgStreamClient.signIn(code);
         this.goToStep2();
       } catch (err) {
         if (err.message && err.message.includes("SESSION_PASSWORD_NEEDED")) {
