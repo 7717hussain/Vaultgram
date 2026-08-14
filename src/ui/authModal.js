@@ -1,556 +1,540 @@
 import { tgStreamClient } from "../telegram/client.js";
 import { getSavedSession, saveSession, clearSession, getTgConfig, saveTgConfig } from "../telegram/session.js";
+import { vaultStore } from "../catalog/vaultStore.js";
+import { createIcon, Icons } from "./icons.js";
 
+/**
+ * 3-Step Onboarding Wizard
+ * Step 1: Clean Minimalist Login Screen (Phone -> Code -> 2FA or Session String)
+ * Step 2: Channel Selection Wizard (Search, Multi-select, Select All, No Public/Private distinction)
+ * Step 3: Main Dashboard (Triggers callback)
+ */
 export class AuthModal {
-  constructor(containerEl, onAuthSuccess) {
+  constructor(containerEl, onComplete) {
     this.container = containerEl;
-    this.onAuthSuccess = onAuthSuccess;
-    this.currentStep = "login"; // 'login' | 'channels'
-    this.currentTab = "phone"; // 'phone' | 'session'
-    this.discoveredChannels = { publicChannels: [], privateChannels: [] };
-    this.selectedChannelIds = new Set();
+    this.onComplete = onComplete;
+    this.step = 1; // 1: Login, 2: Channel Wizard
+    this.tab = "phone"; // 'phone' | 'session'
+    this.phoneCodeHash = null;
+    this.phoneNumber = "";
+    this.discoveredChannels = [];
+    this.selectedIds = new Set(vaultStore.selectedChannelIds);
+    this.searchQuery = "";
+
     this.render();
     this.bindEvents();
   }
 
-  render() {
-    this.container.innerHTML = `
-      <div class="login-page-container" id="login-page-backdrop">
-        <div class="shadcn-card">
-          
-          <!-- Top-Right Bypass / Close Button for Instant Testing -->
-          <button class="modal-close-bypass-btn" id="modal-bypass-btn" title="Bypass / Close (Testing Mode)">
-            &times;
-          </button>
-
-          <!-- Step 1: Login View -->
-          <div id="view-login-step">
-            <!-- Header -->
-            <div class="shadcn-card-header">
-              <div class="brand-badge-container">
-                <div class="brand-icon">&#x25B6;</div>
-              </div>
-              <h1 class="shadcn-card-title">Welcome to Vaultgram</h1>
-              <p class="shadcn-card-description">
-                Sign in with your Telegram account to access your decentralized cloud streams.
-              </p>
-            </div>
-
-            <!-- Status Box -->
-            <div style="display: flex; align-items: center; justify-content: space-between; padding: 0.5rem 0.75rem; background: hsl(var(--muted)); border: 1px solid hsl(var(--border)); border-radius: var(--radius); margin: 0.85rem 0;">
-              <div class="status-indicator">
-                <span class="status-dot disconnected" id="login-status-dot"></span>
-                <span id="login-status-text" style="font-size: 0.8rem; font-weight: 500;">Disconnected</span>
-              </div>
-              <button class="shadcn-button ghost" id="btn-quick-clear" style="height: 22px; width: auto; padding: 0 6px; font-size: 0.725rem;">Reset</button>
-            </div>
-
-            <!-- shadcn Tab Selector -->
-            <div class="shadcn-tabs-list" style="margin-bottom: 0.85rem;">
-              <button class="shadcn-tab-trigger active" id="tab-phone-trigger">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                <span>Phone Number</span>
-              </button>
-              <button class="shadcn-tab-trigger" id="tab-session-trigger">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-1.5 1.5L14 9M3 21l6.5-6.5M10 11l2 2-3 3-2-2 3-3z"/><circle cx="7.5" cy="16.5" r="4.5"/></svg>
-                <span>String Session</span>
-              </button>
-            </div>
-
-            <!-- Form Panel 1: Phone + OTP Login -->
-            <div class="shadcn-form" id="panel-phone">
-              <div class="form-item" id="group-phone">
-                <label class="form-label" for="phone-input">Phone Number</label>
-                <input 
-                  type="tel" 
-                  class="shadcn-input" 
-                  id="phone-input" 
-                  placeholder="+1 234 567 8900" 
-                  autocomplete="tel"
-                />
-                <span class="form-hint">Enter your phone number with your international country code.</span>
-                <button class="shadcn-button primary" id="btn-send-code" style="margin-top: 0.25rem;">
-                  Send Telegram Login Code
-                </button>
-              </div>
-
-              <!-- OTP Verification Step -->
-              <div class="form-item hidden" id="group-otp">
-                <label class="form-label" for="otp-input">Telegram Login Code</label>
-                <input 
-                  type="text" 
-                  class="shadcn-input" 
-                  id="otp-input" 
-                  placeholder="Enter the 5-digit code from your Telegram app" 
-                  maxlength="10"
-                />
-                <span class="form-hint">Check your Telegram mobile / desktop app for the login code.</span>
-                <button class="shadcn-button primary" id="btn-verify-otp" style="margin-top: 0.25rem;">
-                  Verify & Sign In
-                </button>
-              </div>
-            </div>
-
-            <!-- Form Panel 2: String Session Login -->
-            <div class="shadcn-form hidden" id="panel-session">
-              <div class="form-item">
-                <label class="form-label" for="session-input">GramJS / Telethon String Session</label>
-                <textarea 
-                  class="shadcn-textarea" 
-                  id="session-input" 
-                  rows="3" 
-                  placeholder="Paste your GramJS / Telethon StringSession here..."
-                ></textarea>
-                <span class="form-hint">Paste your existing MTProto session string for instant connection.</span>
-                <button class="shadcn-button primary" id="btn-connect-session" style="margin-top: 0.25rem;">
-                  Connect Session
-                </button>
-              </div>
-            </div>
-
-            <!-- Optional API Config Accordion -->
-            <div class="api-credentials-accordion" style="margin-top: 0.85rem;">
-              <div class="accordion-header" id="accordion-toggle">
-                <div style="display: flex; align-items: center; gap: 0.35rem;">
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                  <span>Custom Telegram API App (Optional)</span>
-                </div>
-                <span id="accordion-arrow">&darr;</span>
-              </div>
-              <div class="accordion-body hidden" id="accordion-content">
-                <div class="form-item">
-                  <label class="form-label" style="font-size: 0.75rem;">API ID</label>
-                  <input type="number" class="shadcn-input" id="api-id-input" placeholder="e.g. 12345678" style="height: 2.1rem; font-size: 0.8rem;" />
-                </div>
-                <div class="form-item">
-                  <label class="form-label" style="font-size: 0.75rem;">API HASH</label>
-                  <input type="text" class="shadcn-input" id="api-hash-input" placeholder="e.g. 0123456789abcdef..." style="height: 2.1rem; font-size: 0.8rem;" />
-                </div>
-                <button class="shadcn-button secondary" id="btn-save-api-config" style="height: 2rem; font-size: 0.75rem;">
-                  Save Custom API Keys
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <!-- Step 2: Channel Discovery & Selection View -->
-          <div class="channel-selection-view hidden" id="view-channels-step">
-            <div class="shadcn-card-header" style="text-align: left; padding: 0;">
-              <h2 class="shadcn-card-title" style="font-size: 1.25rem;">Import Vault Sources</h2>
-              <p class="shadcn-card-description">
-                Select which Public and Private channels to index for streaming and cloud storage.
-              </p>
-            </div>
-
-            <!-- Public Channels Group -->
-            <div class="channel-category-group">
-              <div class="channel-category-header">
-                <div class="channel-category-title">
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                  <span>Public Channels</span>
-                  <span id="public-channels-count" style="font-size: 0.725rem; color: hsl(var(--muted-foreground));">(0)</span>
-                </div>
-                <button class="channel-select-all-btn" id="btn-toggle-all-public">Select All</button>
-              </div>
-              <div class="channel-list-scroll" id="public-channels-list">
-                <div class="empty-channel-notice">No public channels found on this account.</div>
-              </div>
-            </div>
-
-            <!-- Private Channels Group -->
-            <div class="channel-category-group">
-              <div class="channel-category-header">
-                <div class="channel-category-title">
-                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                  <span>Private Channels & Groups</span>
-                  <span id="private-channels-count" style="font-size: 0.725rem; color: hsl(var(--muted-foreground));">(0)</span>
-                </div>
-                <button class="channel-select-all-btn" id="btn-toggle-all-private">Select All</button>
-              </div>
-              <div class="channel-list-scroll" id="private-channels-list">
-                <div class="empty-channel-notice">No private channels or groups found.</div>
-              </div>
-            </div>
-
-            <!-- Channel Actions -->
-            <div style="display: flex; gap: 0.5rem; margin-top: 0.5rem;">
-              <button class="shadcn-button primary" id="btn-confirm-channels">
-                Launch Vaultgram (<span id="selected-channels-badge">0</span> selected)
-              </button>
-              <button class="shadcn-button outline" id="btn-skip-channels" style="width: auto;">
-                Skip
-              </button>
-            </div>
-          </div>
-
-          <!-- Dynamic Alert / Toast -->
-          <div class="shadcn-alert hidden" id="auth-alert"></div>
-
-          <!-- Footer Privacy Notice -->
-          <div class="card-footer-privacy">
-            <div style="display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <span><strong>100% Decentralized & Private</strong>: Directly connects to Telegram MTProto Edge servers from your browser.</span>
-            </div>
-          </div>
-
-        </div>
-      </div>
-    `;
-  }
-
-  bindEvents() {
-    const bypassBtn = this.container.querySelector("#modal-bypass-btn");
-    const viewLoginStep = this.container.querySelector("#view-login-step");
-    const viewChannelsStep = this.container.querySelector("#view-channels-step");
-
-    const tabPhoneTrigger = this.container.querySelector("#tab-phone-trigger");
-    const tabSessionTrigger = this.container.querySelector("#tab-session-trigger");
-    const panelPhone = this.container.querySelector("#panel-phone");
-    const panelSession = this.container.querySelector("#panel-session");
-
-    const phoneInput = this.container.querySelector("#phone-input");
-    const otpInput = this.container.querySelector("#otp-input");
-    const btnSendCode = this.container.querySelector("#btn-send-code");
-    const btnVerifyOtp = this.container.querySelector("#btn-verify-otp");
-    const groupPhone = this.container.querySelector("#group-phone");
-    const groupOtp = this.container.querySelector("#group-otp");
-
-    const sessionInput = this.container.querySelector("#session-input");
-    const btnConnectSession = this.container.querySelector("#btn-connect-session");
-    const btnQuickClear = this.container.querySelector("#btn-quick-clear");
-
-    const accordionToggle = this.container.querySelector("#accordion-toggle");
-    const accordionContent = this.container.querySelector("#accordion-content");
-    const accordionArrow = this.container.querySelector("#accordion-arrow");
-    const apiIdInput = this.container.querySelector("#api-id-input");
-    const apiHashInput = this.container.querySelector("#api-hash-input");
-    const btnSaveApiConfig = this.container.querySelector("#btn-save-api-config");
-
-    const btnConfirmChannels = this.container.querySelector("#btn-confirm-channels");
-    const btnSkipChannels = this.container.querySelector("#btn-skip-channels");
-    const btnToggleAllPublic = this.container.querySelector("#btn-toggle-all-public");
-    const btnToggleAllPrivate = this.container.querySelector("#btn-toggle-all-private");
-
-    // Close / Bypass button for instant testing
-    bypassBtn.onclick = () => {
-      this.hide();
-    };
-
-    // Load saved API credentials if configured
-    const savedConfig = getTgConfig();
-    if (savedConfig.apiId) apiIdInput.value = savedConfig.apiId;
-    if (savedConfig.apiHash) apiHashInput.value = savedConfig.apiHash;
-
-    // Load saved session if exists
-    sessionInput.value = getSavedSession();
-
-    // Tab Switching
-    tabPhoneTrigger.onclick = () => {
-      tabPhoneTrigger.classList.add("active");
-      tabSessionTrigger.classList.remove("active");
-      panelPhone.classList.remove("hidden");
-      panelSession.classList.add("hidden");
-      this.currentTab = "phone";
-    };
-
-    tabSessionTrigger.onclick = () => {
-      tabSessionTrigger.classList.add("active");
-      tabPhoneTrigger.classList.remove("active");
-      panelSession.classList.remove("hidden");
-      panelPhone.classList.add("hidden");
-      this.currentTab = "session";
-    };
-
-    // Accordion Toggle
-    accordionToggle.onclick = () => {
-      const isHidden = accordionContent.classList.toggle("hidden");
-      accordionArrow.textContent = isHidden ? "▾" : "▴";
-    };
-
-    // Save Custom API Config
-    btnSaveApiConfig.onclick = () => {
-      const id = parseInt(apiIdInput.value.trim(), 10);
-      const hash = apiHashInput.value.trim();
-      if (!id || !hash) {
-        return this.showAlert("Please enter both a valid API ID and API HASH", "error");
-      }
-      saveTgConfig(id, hash);
-      this.showAlert("Custom Telegram API credentials saved successfully!", "success");
-      accordionContent.classList.add("hidden");
-      accordionArrow.textContent = "▾";
-    };
-
-    // 1. Phone Send Code
-    btnSendCode.onclick = async () => {
-      const phone = phoneInput.value.trim();
-      if (!phone || phone.length < 6) {
-        return this.showAlert("Please enter a valid phone number with country code (e.g. +1...)", "error");
-      }
-
-      const config = getTgConfig();
-      if (!config.apiId || !config.apiHash) {
-        accordionContent.classList.remove("hidden");
-        accordionArrow.textContent = "▴";
-        return this.showAlert("Please provide your Telegram API ID & Hash in the custom API app settings below.", "error");
-      }
-
-      btnSendCode.disabled = true;
-      this.showAlert("Connecting to Telegram & requesting code...", "info");
-
-      try {
-        await tgStreamClient.sendCode(phone);
-        this.showAlert("Code sent! Check your Telegram app for the verification code.", "success");
-        groupPhone.classList.add("hidden");
-        groupOtp.classList.remove("hidden");
-        otpInput.focus();
-      } catch (err) {
-        this.showAlert(`Failed to send code: ${err.message || err}`, "error");
-      } finally {
-        btnSendCode.disabled = false;
-      }
-    };
-
-    // 2. OTP Verification
-    btnVerifyOtp.onclick = async () => {
-      const code = otpInput.value.trim();
-      if (!code) {
-        return this.showAlert("Please enter the login code from Telegram", "error");
-      }
-
-      btnVerifyOtp.disabled = true;
-      this.showAlert("Verifying code and authenticating...", "info");
-
-      try {
-        const user = await tgStreamClient.signIn(code);
-        this.showAlert(`Connected as ${user.firstName || "User"}! Fetching your channel list...`, "success");
-        await this.loadChannelsStep();
-      } catch (err) {
-        this.showAlert(`Authentication failed: ${err.message || err}`, "error");
-      } finally {
-        btnVerifyOtp.disabled = false;
-      }
-    };
-
-    // 3. String Session Connect
-    btnConnectSession.onclick = async () => {
-      const str = sessionInput.value.trim();
-      if (!str) {
-        return this.showAlert("Please paste your String Session token", "error");
-      }
-
-      saveSession(str);
-      btnConnectSession.disabled = true;
-      this.showAlert("Connecting with string session...", "info");
-
-      try {
-        const ok = await tgStreamClient.init();
-        if (ok) {
-          this.showAlert("Authenticated successfully! Fetching your channel list...", "success");
-          await this.loadChannelsStep();
-        } else {
-          this.showAlert("Session connection failed. Please check the session string or login with Phone.", "error");
-        }
-      } catch (err) {
-        this.showAlert(`Connection error: ${err.message || err}`, "error");
-      } finally {
-        btnConnectSession.disabled = false;
-      }
-    };
-
-    // Reset button
-    btnQuickClear.onclick = () => {
-      clearSession();
-      sessionInput.value = "";
-      groupOtp.classList.add("hidden");
-      groupPhone.classList.remove("hidden");
-      this.showAlert("Local credentials cleared.", "info");
-    };
-
-    // Confirm Channel Selection
-    btnConfirmChannels.onclick = () => {
-      const selected = Array.from(this.selectedChannelIds);
-      localStorage.setItem("vaultgram_selected_channels", JSON.stringify(selected));
-      this.hide();
-      if (this.onAuthSuccess) this.onAuthSuccess(selected);
-    };
-
-    // Skip Channel Selection
-    btnSkipChannels.onclick = () => {
-      this.hide();
-      if (this.onAuthSuccess) this.onAuthSuccess([]);
-    };
-
-    // Toggle All Public
-    btnToggleAllPublic.onclick = () => {
-      const allSelected = this.discoveredChannels.publicChannels.every((c) => this.selectedChannelIds.has(c.id));
-      for (const c of this.discoveredChannels.publicChannels) {
-        if (allSelected) this.selectedChannelIds.delete(c.id);
-        else this.selectedChannelIds.add(c.id);
-      }
-      this.renderChannelLists();
-    };
-
-    // Toggle All Private
-    btnToggleAllPrivate.onclick = () => {
-      const allSelected = this.discoveredChannels.privateChannels.every((c) => this.selectedChannelIds.has(c.id));
-      for (const c of this.discoveredChannels.privateChannels) {
-        if (allSelected) this.selectedChannelIds.delete(c.id);
-        else this.selectedChannelIds.add(c.id);
-      }
-      this.renderChannelLists();
-    };
-
-    // Status updates
-    tgStreamClient.onStatusChange((status) => {
-      const dot = this.container.querySelector("#login-status-dot");
-      const text = this.container.querySelector("#login-status-text");
-      if (status.isConnected) {
-        dot.className = "status-dot connected";
-        text.textContent = `Signed In (@${status.user?.username || status.user?.firstName || "user"})`;
-      } else if (status.isConnecting) {
-        dot.className = "status-dot connecting";
-        text.textContent = "Connecting to Telegram...";
-      } else {
-        dot.className = "status-dot disconnected";
-        text.textContent = "Not signed in";
-      }
-    });
-  }
-
-  async loadChannelsStep() {
-    try {
-      this.showAlert("Loading your Telegram channels & vaults...", "info");
-      const { publicChannels, privateChannels } = await tgStreamClient.getUserChannels();
-      this.discoveredChannels = { publicChannels, privateChannels };
-
-      // By default, select all discovered channels
-      this.selectedChannelIds = new Set([
-        ...publicChannels.map((c) => c.id),
-        ...privateChannels.map((c) => c.id),
-      ]);
-
-      const viewLoginStep = this.container.querySelector("#view-login-step");
-      const viewChannelsStep = this.container.querySelector("#view-channels-step");
-
-      viewLoginStep.classList.add("hidden");
-      viewChannelsStep.classList.remove("hidden");
-      this.currentStep = "channels";
-
-      this.renderChannelLists();
-      this.showAlert(`Discovered ${publicChannels.length} public & ${privateChannels.length} private channels.`, "success");
-    } catch (err) {
-      console.error("Failed to load user channels:", err);
-      this.showAlert(`Connected, but channel discovery error: ${err.message || err}`, "error");
-      setTimeout(() => {
-        this.hide();
-        if (this.onAuthSuccess) this.onAuthSuccess();
-      }, 1500);
-    }
-  }
-
-  renderChannelLists() {
-    const publicContainer = this.container.querySelector("#public-channels-list");
-    const privateContainer = this.container.querySelector("#private-channels-list");
-    const publicCountEl = this.container.querySelector("#public-channels-count");
-    const privateCountEl = this.container.querySelector("#private-channels-count");
-    const selectedBadge = this.container.querySelector("#selected-channels-badge");
-
-    const { publicChannels, privateChannels } = this.discoveredChannels;
-
-    publicCountEl.textContent = `(${publicChannels.length})`;
-    privateCountEl.textContent = `(${privateChannels.length})`;
-    selectedBadge.textContent = this.selectedChannelIds.size;
-
-    // Render Public Channels
-    if (publicChannels.length === 0) {
-      publicContainer.innerHTML = `<div class="empty-channel-notice">No public channels found.</div>`;
-    } else {
-      publicContainer.innerHTML = publicChannels.map((ch) => `
-        <div class="channel-item-card" data-channel-id="${ch.id}">
-          <div class="channel-item-left">
-            <input 
-              type="checkbox" 
-              class="channel-custom-checkbox" 
-              data-id="${ch.id}" 
-              ${this.selectedChannelIds.has(ch.id) ? "checked" : ""}
-            />
-            <div class="channel-item-meta">
-              <span class="channel-item-title">${this.escapeHtml(ch.title)}</span>
-              <span class="channel-item-subtitle">${ch.username ? `@${ch.username}` : "Public Channel"}</span>
-            </div>
-          </div>
-          <span class="channel-badge public">Public</span>
-        </div>
-      `).join("");
-    }
-
-    // Render Private Channels
-    if (privateChannels.length === 0) {
-      privateContainer.innerHTML = `<div class="empty-channel-notice">No private channels or groups found.</div>`;
-    } else {
-      privateContainer.innerHTML = privateChannels.map((ch) => `
-        <div class="channel-item-card" data-channel-id="${ch.id}">
-          <div class="channel-item-left">
-            <input 
-              type="checkbox" 
-              class="channel-custom-checkbox" 
-              data-id="${ch.id}" 
-              ${this.selectedChannelIds.has(ch.id) ? "checked" : ""}
-            />
-            <div class="channel-item-meta">
-              <span class="channel-item-title">${this.escapeHtml(ch.title)}</span>
-              <span class="channel-item-subtitle">Private Access &bull; ID: ${ch.id}</span>
-            </div>
-          </div>
-          <span class="channel-badge private">Private</span>
-        </div>
-      `).join("");
-    }
-
-    // Bind checkbox click events
-    this.container.querySelectorAll(".channel-item-card").forEach((card) => {
-      card.onclick = (e) => {
-        const checkbox = card.querySelector(".channel-custom-checkbox");
-        if (e.target !== checkbox) {
-          checkbox.checked = !checkbox.checked;
-        }
-        const id = checkbox.dataset.id;
-        if (checkbox.checked) {
-          this.selectedChannelIds.add(id);
-        } else {
-          this.selectedChannelIds.delete(id);
-        }
-        selectedBadge.textContent = this.selectedChannelIds.size;
-      };
-    });
-  }
-
-  escapeHtml(str) {
-    if (!str) return "";
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#039;");
-  }
-
-  show() {
-    const el = this.container.querySelector("#login-page-backdrop");
-    if (el) el.classList.remove("hidden");
+  show(step = 1) {
+    this.step = step;
+    const backdrop = this.container.querySelector("#auth-wizard-backdrop");
+    if (backdrop) backdrop.classList.remove("hidden");
+    this.renderStepView();
   }
 
   hide() {
-    const el = this.container.querySelector("#login-page-backdrop");
-    if (el) el.classList.add("hidden");
+    const backdrop = this.container.querySelector("#auth-wizard-backdrop");
+    if (backdrop) backdrop.classList.add("hidden");
+  }
+
+  render() {
+    this.container.innerHTML = `
+      <div class="login-page-container" id="auth-wizard-backdrop">
+        <div class="shadcn-card" id="auth-card-body">
+          <!-- Dynamically Rendered Step Views -->
+        </div>
+      </div>
+    `;
+    this.renderStepView();
+  }
+
+  renderStepView() {
+    const card = this.container.querySelector("#auth-card-body");
+    if (!card) return;
+
+    while (card.firstChild) card.removeChild(card.firstChild);
+
+    if (this.step === 1) {
+      this.renderStep1Login(card);
+    } else if (this.step === 2) {
+      this.renderStep2ChannelWizard(card);
+    }
+  }
+
+  // --- STEP 1: LOGIN ---
+  renderStep1Login(card) {
+    // Header
+    const header = document.createElement("div");
+    header.className = "shadcn-card-header";
+
+    const badge = document.createElement("div");
+    badge.className = "brand-badge-container";
+    badge.appendChild(createIcon(Icons.HardDrive, { size: 22 }));
+    header.appendChild(badge);
+
+    const title = document.createElement("h1");
+    title.className = "shadcn-card-title";
+    title.textContent = "Televault";
+    header.appendChild(title);
+
+    const desc = document.createElement("p");
+    desc.className = "shadcn-card-description";
+    desc.textContent = "Telegram-backed decentralized cloud storage drive. Client-side & private.";
+    header.appendChild(desc);
+
+    card.appendChild(header);
+
+    // Status Banner
+    const statusBox = document.createElement("div");
+    statusBox.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:hsl(var(--muted));border:1px solid hsl(var(--border));border-radius:var(--radius);margin:10px 0;";
+    
+    const statusInd = document.createElement("div");
+    statusInd.className = "status-indicator";
+    const dot = document.createElement("span");
+    dot.className = "status-dot disconnected";
+    statusInd.appendChild(dot);
+    const statTxt = document.createElement("span");
+    statTxt.style.fontSize = "0.8rem";
+    statTxt.textContent = "Not Connected";
+    statusInd.appendChild(statTxt);
+    statusBox.appendChild(statusInd);
+
+    card.appendChild(statusBox);
+
+    // Tabs
+    const tabsList = document.createElement("div");
+    tabsList.className = "shadcn-tabs-list";
+
+    const tabPhone = document.createElement("button");
+    tabPhone.className = `shadcn-tab-trigger ${this.tab === "phone" ? "active" : ""}`;
+    tabPhone.appendChild(createIcon(Icons.Smartphone, { size: 14 }));
+    const pSpan = document.createElement("span");
+    pSpan.textContent = "Phone OTP";
+    tabPhone.appendChild(pSpan);
+    tabPhone.onclick = () => { this.tab = "phone"; this.renderStepView(); };
+
+    const tabSession = document.createElement("button");
+    tabSession.className = `shadcn-tab-trigger ${this.tab === "session" ? "active" : ""}`;
+    tabSession.appendChild(createIcon(Icons.Key, { size: 14 }));
+    const sSpan = document.createElement("span");
+    sSpan.textContent = "Session String";
+    tabSession.appendChild(sSpan);
+    tabSession.onclick = () => { this.tab = "session"; this.renderStepView(); };
+
+    tabsList.appendChild(tabPhone);
+    tabsList.appendChild(tabSession);
+    card.appendChild(tabsList);
+
+    // Alerts
+    const alertDiv = document.createElement("div");
+    alertDiv.id = "step1-alert";
+    alertDiv.className = "shadcn-alert hidden";
+    card.appendChild(alertDiv);
+
+    if (this.tab === "phone") {
+      this.renderPhoneForm(card);
+    } else {
+      this.renderSessionForm(card);
+    }
+
+    // Credentials Config Accordion
+    this.renderCustomConfigSection(card);
+  }
+
+  renderPhoneForm(card) {
+    const form = document.createElement("div");
+    form.style.display = "flex";
+    form.style.flexDirection = "column";
+    form.style.gap = "12px";
+
+    // Phone Input
+    const phoneGroup = document.createElement("div");
+    phoneGroup.className = "shadcn-form-item";
+    const pLabel = document.createElement("label");
+    pLabel.className = "shadcn-label";
+    pLabel.textContent = "Phone Number (with country code)";
+    const pInput = document.createElement("input");
+    pInput.className = "shadcn-input";
+    pInput.id = "auth-phone-input";
+    pInput.placeholder = "+1234567890";
+    phoneGroup.appendChild(pLabel);
+    phoneGroup.appendChild(pInput);
+    form.appendChild(phoneGroup);
+
+    const btnSendCode = document.createElement("button");
+    btnSendCode.className = "shadcn-button";
+    btnSendCode.id = "btn-send-code";
+    btnSendCode.textContent = "Send Verification Code";
+    btnSendCode.onclick = async () => {
+      const phone = pInput.value.trim();
+      if (!phone) {
+        this.showAlert("Please enter your phone number with country code.", "error");
+        return;
+      }
+      btnSendCode.disabled = true;
+      btnSendCode.textContent = "Sending Code...";
+      try {
+        const res = await tgStreamClient.sendPhoneCode(phone);
+        this.phoneCodeHash = res.phoneCodeHash;
+        this.phoneNumber = phone;
+        this.showAlert("Code sent! Check your Telegram messages.", "success");
+        codeGroup.classList.remove("hidden");
+        btnSignIn.classList.remove("hidden");
+        btnSendCode.classList.add("hidden");
+      } catch (err) {
+        this.showAlert(err.message || "Failed to send code. Check API credentials.", "error");
+        btnSendCode.disabled = false;
+        btnSendCode.textContent = "Send Verification Code";
+      }
+    };
+    form.appendChild(btnSendCode);
+
+    // Code Input (Hidden initially)
+    const codeGroup = document.createElement("div");
+    codeGroup.className = "shadcn-form-item hidden";
+    codeGroup.id = "group-otp-code";
+    const cLabel = document.createElement("label");
+    cLabel.className = "shadcn-label";
+    cLabel.textContent = "Telegram Verification Code";
+    const cInput = document.createElement("input");
+    cInput.className = "shadcn-input";
+    cInput.id = "auth-otp-input";
+    cInput.placeholder = "12345";
+    codeGroup.appendChild(cLabel);
+    codeGroup.appendChild(cInput);
+    form.appendChild(codeGroup);
+
+    const btnSignIn = document.createElement("button");
+    btnSignIn.className = "shadcn-button hidden";
+    btnSignIn.id = "btn-phone-signin";
+    btnSignIn.textContent = "Sign In to Televault";
+    btnSignIn.onclick = async () => {
+      const code = cInput.value.trim();
+      if (!code) {
+        this.showAlert("Please enter the verification code received on Telegram.", "error");
+        return;
+      }
+      btnSignIn.disabled = true;
+      btnSignIn.textContent = "Signing In...";
+      try {
+        await tgStreamClient.signInWithPhone(this.phoneNumber, code, this.phoneCodeHash);
+        this.goToStep2();
+      } catch (err) {
+        if (err.message && err.message.includes("SESSION_PASSWORD_NEEDED")) {
+          const pass = prompt("Your Telegram account has 2-Step Verification enabled. Enter your Cloud Password:");
+          if (pass) {
+            try {
+              await tgStreamClient.handle2FAPassword(pass);
+              this.goToStep2();
+              return;
+            } catch (pErr) {
+              this.showAlert(pErr.message || "2FA Verification failed.", "error");
+            }
+          }
+        } else {
+          this.showAlert(err.message || "Sign in failed.", "error");
+        }
+        btnSignIn.disabled = false;
+        btnSignIn.textContent = "Sign In to Televault";
+      }
+    };
+    form.appendChild(btnSignIn);
+
+    card.appendChild(form);
+  }
+
+  renderSessionForm(card) {
+    const form = document.createElement("div");
+    form.style.display = "flex";
+    form.style.flexDirection = "column";
+    form.style.gap = "12px";
+
+    const sGroup = document.createElement("div");
+    sGroup.className = "shadcn-form-item";
+    const sLabel = document.createElement("label");
+    sLabel.className = "shadcn-label";
+    sLabel.textContent = "GramJS Session String";
+    const sInput = document.createElement("textarea");
+    sInput.className = "shadcn-input";
+    sInput.id = "auth-session-input";
+    sInput.rows = 4;
+    sInput.placeholder = "1BJWap1wB...";
+    sGroup.appendChild(sLabel);
+    sGroup.appendChild(sInput);
+    form.appendChild(sGroup);
+
+    const btnSessionLogin = document.createElement("button");
+    btnSessionLogin.className = "shadcn-button";
+    btnSessionLogin.textContent = "Connect with Session String";
+    btnSessionLogin.onclick = async () => {
+      const sess = sInput.value.trim();
+      if (!sess) {
+        this.showAlert("Please paste your Telegram StringSession.", "error");
+        return;
+      }
+      btnSessionLogin.disabled = true;
+      btnSessionLogin.textContent = "Connecting...";
+      try {
+        saveSession(sess);
+        await tgStreamClient.init();
+        this.goToStep2();
+      } catch (err) {
+        this.showAlert(err.message || "Invalid session string.", "error");
+        btnSessionLogin.disabled = false;
+        btnSessionLogin.textContent = "Connect with Session String";
+      }
+    };
+    form.appendChild(btnSessionLogin);
+
+    card.appendChild(form);
+  }
+
+  renderCustomConfigSection(card) {
+    const config = getTgConfig();
+    const det = document.createElement("details");
+    det.style.cssText = "font-size:0.775rem;margin-top:12px;color:hsl(var(--muted-foreground));";
+    
+    const sum = document.createElement("summary");
+    sum.style.cursor = "pointer";
+    sum.textContent = "Custom Telegram API Keys (Optional)";
+    det.appendChild(sum);
+
+    const box = document.createElement("div");
+    box.style.cssText = "display:flex;flex-direction:column;gap:8px;padding-top:8px;";
+
+    const idInp = document.createElement("input");
+    idInp.className = "shadcn-input";
+    idInp.placeholder = "Custom API ID (e.g. 123456)";
+    idInp.value = config.apiId || "";
+    box.appendChild(idInp);
+
+    const hashInp = document.createElement("input");
+    hashInp.className = "shadcn-input";
+    hashInp.placeholder = "Custom API Hash";
+    hashInp.value = config.apiHash || "";
+    box.appendChild(hashInp);
+
+    const btnSaveCfg = document.createElement("button");
+    btnSaveCfg.className = "shadcn-button ghost";
+    btnSaveCfg.textContent = "Save API Keys";
+    btnSaveCfg.style.height = "28px";
+    btnSaveCfg.onclick = () => {
+      saveTgConfig(idInp.value.trim(), hashInp.value.trim());
+      alert("Custom Telegram API Keys saved locally!");
+    };
+    box.appendChild(btnSaveCfg);
+
+    det.appendChild(box);
+    card.appendChild(det);
+  }
+
+  // --- STEP 2: CHANNEL SELECTION WIZARD ---
+  async goToStep2() {
+    this.step = 2;
+    this.renderStepView();
+    await this.fetchChannelsForWizard();
+  }
+
+  async fetchChannelsForWizard() {
+    const card = this.container.querySelector("#auth-card-body");
+    const listContainer = card.querySelector("#wizard-channel-list");
+    if (!listContainer) return;
+
+    listContainer.innerHTML = `<div style="text-align:center;padding:24px;color:hsl(var(--muted-foreground));font-size:0.85rem;">Discovering your Telegram channels...</div>`;
+
+    try {
+      const { publicChannels, privateChannels } = await tgStreamClient.getUserChannels();
+      // All channels are treated uniformly (no public vs private distinction)
+      this.discoveredChannels = [...publicChannels, ...privateChannels];
+
+      // Auto-select all by default if no selection saved
+      if (this.selectedIds.size === 0) {
+        for (const ch of this.discoveredChannels) {
+          this.selectedIds.add(ch.id);
+        }
+      }
+
+      this.renderChannelListItems();
+    } catch (err) {
+      listContainer.innerHTML = `<div style="text-align:center;padding:24px;color:#f87171;font-size:0.85rem;">Failed to load channels: ${err.message}</div>`;
+    }
+  }
+
+  renderStep2ChannelWizard(card) {
+    // Header
+    const header = document.createElement("div");
+    header.className = "shadcn-card-header";
+
+    const badge = document.createElement("div");
+    badge.className = "brand-badge-container";
+    badge.appendChild(createIcon(Icons.Layers, { size: 22 }));
+    header.appendChild(badge);
+
+    const title = document.createElement("h1");
+    title.className = "shadcn-card-title";
+    title.textContent = "Select Channels for Your Drive";
+    header.appendChild(title);
+
+    const desc = document.createElement("p");
+    desc.className = "shadcn-card-description";
+    desc.textContent = "Choose which Telegram chats and channels to index into your Drive.";
+    header.appendChild(desc);
+
+    card.appendChild(header);
+
+    // Search bar
+    const searchWrap = document.createElement("div");
+    searchWrap.style.cssText = "position:relative;margin:10px 0;";
+    
+    const sInput = document.createElement("input");
+    sInput.className = "shadcn-input";
+    sInput.placeholder = "Filter channels...";
+    sInput.oninput = (e) => {
+      this.searchQuery = e.target.value.toLowerCase().trim();
+      this.renderChannelListItems();
+    };
+    searchWrap.appendChild(sInput);
+    card.appendChild(searchWrap);
+
+    // Bulk action toolbar: Select All / Clear + Selection Counter
+    const toolbar = document.createElement("div");
+    toolbar.style.cssText = "display:flex;align-items:center;justify-content:space-between;padding:6px 2px;font-size:0.775rem;";
+
+    const counterSpan = document.createElement("span");
+    counterSpan.id = "wizard-count-badge";
+    counterSpan.style.color = "hsl(var(--muted-foreground))";
+    counterSpan.textContent = `${this.selectedIds.size} channels selected`;
+    toolbar.appendChild(counterSpan);
+
+    const btnGroup = document.createElement("div");
+    btnGroup.style.cssText = "display:flex;align-items:center;gap:6px;";
+
+    const btnAll = document.createElement("button");
+    btnAll.className = "shadcn-button ghost";
+    btnAll.style.cssText = "height:24px;padding:0 8px;font-size:0.725rem;";
+    btnAll.textContent = "Select All";
+    btnAll.onclick = () => {
+      for (const c of this.discoveredChannels) this.selectedIds.add(c.id);
+      this.renderChannelListItems();
+    };
+
+    const btnClear = document.createElement("button");
+    btnClear.className = "shadcn-button ghost";
+    btnClear.style.cssText = "height:24px;padding:0 8px;font-size:0.725rem;";
+    btnClear.textContent = "Clear";
+    btnClear.onclick = () => {
+      this.selectedIds.clear();
+      this.renderChannelListItems();
+    };
+
+    btnGroup.appendChild(btnAll);
+    btnGroup.appendChild(btnClear);
+    toolbar.appendChild(btnGroup);
+    card.appendChild(toolbar);
+
+    // Channels Scroll List Container
+    const scrollList = document.createElement("div");
+    scrollList.id = "wizard-channel-list";
+    scrollList.style.cssText = "max-height:280px;overflow-y:auto;display:flex;flex-direction:column;gap:4px;border:1px solid hsl(var(--border));border-radius:var(--radius);padding:6px;background:hsl(var(--muted)/0.3);";
+    card.appendChild(scrollList);
+
+    // Bottom CTA
+    const btnContinue = document.createElement("button");
+    btnContinue.className = "shadcn-button";
+    btnContinue.id = "btn-wizard-continue";
+    btnContinue.style.marginTop = "12px";
+    btnContinue.textContent = "Continue to Drive";
+    btnContinue.disabled = this.selectedIds.size === 0;
+
+    btnContinue.onclick = () => {
+      const ids = Array.from(this.selectedIds);
+      vaultStore.saveSelectedChannelIds(ids);
+      vaultStore.setChannels(this.discoveredChannels);
+      this.hide();
+      if (this.onComplete) {
+        this.onComplete(ids);
+      }
+    };
+
+    card.appendChild(btnContinue);
+  }
+
+  renderChannelListItems() {
+    const listContainer = this.container.querySelector("#wizard-channel-list");
+    const countBadge = this.container.querySelector("#wizard-count-badge");
+    const btnContinue = this.container.querySelector("#btn-wizard-continue");
+    if (!listContainer) return;
+
+    while (listContainer.firstChild) listContainer.removeChild(listContainer.firstChild);
+
+    if (countBadge) countBadge.textContent = `${this.selectedIds.size} channels selected`;
+    if (btnContinue) btnContinue.disabled = this.selectedIds.size === 0;
+
+    const filtered = this.discoveredChannels.filter((c) => 
+      c.title.toLowerCase().includes(this.searchQuery) ||
+      (c.username && c.username.toLowerCase().includes(this.searchQuery))
+    );
+
+    if (filtered.length === 0) {
+      const empty = document.createElement("div");
+      empty.style.cssText = "padding:16px;text-align:center;color:hsl(var(--muted-foreground));font-size:0.8rem;";
+      empty.textContent = "No channels match your search.";
+      listContainer.appendChild(empty);
+      return;
+    }
+
+    for (const ch of filtered) {
+      const isSelected = this.selectedIds.has(ch.id);
+
+      const row = document.createElement("div");
+      row.style.cssText = `display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:calc(var(--radius)-2px);border:1px solid ${isSelected ? "hsl(var(--ring))" : "transparent"};background:${isSelected ? "hsl(var(--secondary))" : "transparent"};cursor:pointer;transition:all 0.12s ease;`;
+
+      const left = document.createElement("div");
+      left.style.cssText = "display:flex;align-items:center;gap:10px;overflow:hidden;min-width:0;";
+
+      // Checkbox icon
+      const checkHolder = document.createElement("span");
+      checkHolder.appendChild(createIcon(isSelected ? Icons.CheckSquare : Icons.Square, { size: 16 }));
+      left.appendChild(checkHolder);
+
+      // Channel title & subtitle
+      const textWrap = document.createElement("div");
+      textWrap.style.cssText = "display:flex;flex-direction:column;overflow:hidden;";
+      
+      const titleSpan = document.createElement("span");
+      titleSpan.style.cssText = "font-size:0.8125rem;font-weight:500;color:hsl(var(--foreground));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;";
+      titleSpan.textContent = ch.title || "Untitled Channel";
+      textWrap.appendChild(titleSpan);
+
+      if (ch.username) {
+        const uSpan = document.createElement("span");
+        uSpan.style.cssText = "font-size:0.7rem;color:hsl(var(--muted-foreground));";
+        uSpan.textContent = `@${ch.username}`;
+        textWrap.appendChild(uSpan);
+      }
+      left.appendChild(textWrap);
+      row.appendChild(left);
+
+      row.onclick = () => {
+        if (this.selectedIds.has(ch.id)) {
+          this.selectedIds.delete(ch.id);
+        } else {
+          this.selectedIds.add(ch.id);
+        }
+        this.renderChannelListItems();
+      };
+
+      listContainer.appendChild(row);
+    }
   }
 
   showAlert(msg, type = "info") {
-    const alert = this.container.querySelector("#auth-alert");
+    const alert = this.container.querySelector("#step1-alert");
     if (!alert) return;
     alert.textContent = msg;
     alert.className = `shadcn-alert ${type}`;
     alert.classList.remove("hidden");
   }
+
+  bindEvents() {}
 }

@@ -5,7 +5,7 @@ import { MediaBrowser } from "./mediaBrowser.js";
 import { AuthModal } from "./authModal.js";
 import { ShortcutsModal } from "./shortcutsModal.js";
 import { tgStreamClient } from "../telegram/client.js";
-import { getSavedSession } from "../telegram/session.js";
+import { getSavedSession, clearSession } from "../telegram/session.js";
 import { createIcon, Icons } from "./icons.js";
 
 export class App {
@@ -34,17 +34,20 @@ export class App {
             <button class="sidebar-toggle-btn" id="btn-toggle-sidebar" title="Toggle Sidebar">
               <span class="toggle-icon-holder"></span>
             </button>
-            <div class="app-brand-name">Vaultgram</div>
+            <div class="app-brand-name">
+              <span class="brand-logo-icon"></span>
+              <span>Televault</span>
+            </div>
           </div>
 
-          <!-- Centered Global Search Input -->
+          <!-- Centered Global Drive Search Input -->
           <div class="header-search-container">
             <span class="header-search-icon" id="search-icon-holder"></span>
             <input 
               type="text" 
               class="header-search-input" 
               id="header-global-search" 
-              placeholder="Search all files, documents, and videos across channels (/)..."
+              placeholder="Search files, mime-types, and captions across channels (/)..."
             />
             <button class="header-search-clear hidden" id="header-search-clear" title="Clear Search">
               <span class="clear-icon-holder"></span>
@@ -66,17 +69,17 @@ export class App {
           </div>
         </header>
 
-        <!-- Main Body: Sidebar + Main Content Grid Stage -->
+        <!-- Main Body: Dual-Zone Sidebar + Drive Explorer Stage -->
         <div class="app-body">
-          <!-- Sidebar Container (Channels Only) -->
+          <!-- Sidebar Container (Dual-Zone: Top 25% Channels + Bottom 75% Categories) -->
           <div class="sidebar-container" id="sidebar-container"></div>
 
-          <!-- Main Content Stage (Folders & Files Grid Explorer) -->
+          <!-- Main Content Stage (Modern Drive Grid/List File Manager) -->
           <main class="content-stage">
-            <!-- Video Player is retained in code and can be mounted dynamically when needed -->
+            <!-- Retained Video Player (Background runtime for streaming) -->
             <div id="player-container" class="hidden"></div>
 
-            <!-- Media Explorer (Folders & Files Grid) -->
+            <!-- Main Drive Stage -->
             <div id="media-browser-container"></div>
           </main>
         </div>
@@ -87,18 +90,20 @@ export class App {
       </div>
     `;
 
-    // Populate Lucide Icons safely into DOM
-    const toggleIconHolder = this.root.querySelector(".toggle-icon-holder");
-    if (toggleIconHolder) toggleIconHolder.appendChild(createIcon(Icons.PanelLeft, { size: 16 }));
+    // Populate Header Icons safely
+    const setIcon = (sel, def, size = 15) => {
+      const el = this.root.querySelector(sel);
+      if (el) {
+        while (el.firstChild) el.removeChild(el.firstChild);
+        el.appendChild(createIcon(def, { size }));
+      }
+    };
 
-    const searchIconHolder = this.root.querySelector("#search-icon-holder");
-    if (searchIconHolder) searchIconHolder.appendChild(createIcon(Icons.Search, { size: 14 }));
-
-    const clearIconHolder = this.root.querySelector(".clear-icon-holder");
-    if (clearIconHolder) clearIconHolder.appendChild(createIcon(Icons.X, { size: 14 }));
-
-    const keyboardIconHolder = this.root.querySelector(".keyboard-icon-holder");
-    if (keyboardIconHolder) keyboardIconHolder.appendChild(createIcon(Icons.Keyboard, { size: 14 }));
+    setIcon(".toggle-icon-holder", Icons.PanelLeft, 16);
+    setIcon(".brand-logo-icon", Icons.HardDrive, 16);
+    setIcon("#search-icon-holder", Icons.Search, 14);
+    setIcon(".clear-icon-holder", Icons.X, 14);
+    setIcon(".keyboard-icon-holder", Icons.Keyboard, 14);
   }
 
   initComponents() {
@@ -141,7 +146,7 @@ export class App {
     // 1. Auth & Shortcuts Modals
     this.authModal = new AuthModal(
       this.root.querySelector("#auth-modal-container"),
-      (selectedChannels) => this.onAuthSuccess(selectedChannels)
+      (selectedChannelIds) => this.onWizardComplete(selectedChannelIds)
     );
 
     this.shortcutsModal = new ShortcutsModal(
@@ -149,7 +154,7 @@ export class App {
     );
 
     const tgStatusBtn = this.root.querySelector("#tg-status-btn");
-    tgStatusBtn.onclick = () => this.authModal.show();
+    tgStatusBtn.onclick = () => this.authModal.show(1);
 
     const shortcutsHelpBtn = this.root.querySelector("#shortcuts-help-btn");
     if (shortcutsHelpBtn) {
@@ -172,27 +177,23 @@ export class App {
       }
     });
 
-    // 2. Retained Video Player (hidden in background)
+    // 2. Retained Video Player
     this.player = new VideoPlayer(
       this.root.querySelector("#player-container"),
       () => {},
       () => {}
     );
 
-    // 3. Media Browser (Folders + Files Grid Explorer)
+    // 3. Media Browser (Drive Grid/List Explorer)
     this.mediaBrowser = new MediaBrowser(this.root.querySelector("#media-browser-container"), {
-      onPlayMedia: (item) => {
-        this.playMedia(item);
-      },
+      onPlayMedia: (item) => this.playMedia(item),
+      onTriggerUpload: () => this.triggerUpload(),
     });
 
-    // 4. Sidebar (Channels Only)
+    // 4. Dual-Zone Sidebar
     this.sidebar = new Sidebar(sidebarContainer, {
-      onChannelChange: async (channelId) => {
-        if (channelId !== "all") {
-          await this.loadChannelMedia(channelId);
-        }
-      },
+      onOpenWizard: () => this.authModal.show(2),
+      onLogout: () => this.handleLogout(),
     });
   }
 
@@ -200,7 +201,7 @@ export class App {
     const hasSession = !!getSavedSession();
 
     if (!hasSession) {
-      this.authModal.show();
+      this.authModal.show(1);
       return;
     }
 
@@ -211,14 +212,20 @@ export class App {
       });
 
       if (!connected) {
-        this.authModal.show();
+        this.authModal.show(1);
         return;
       }
 
-      await this.syncUserVaults();
+      // If user hasn't completed Channel Selection Wizard (Step 2), open it
+      if (vaultStore.selectedChannelIds.length === 0) {
+        this.authModal.show(2);
+        return;
+      }
+
+      await this.syncUserVaults(vaultStore.selectedChannelIds);
     } catch (err) {
       console.error("Error initializing user data:", err);
-      this.authModal.show();
+      this.authModal.show(1);
     }
   }
 
@@ -226,18 +233,13 @@ export class App {
     try {
       const { publicChannels, privateChannels } = await tgStreamClient.getUserChannels();
       const allChannels = [...publicChannels, ...privateChannels];
+      vaultStore.setChannels(allChannels);
 
-      let filteredChannels = allChannels;
-      if (selectedIds && selectedIds.length > 0) {
-        filteredChannels = allChannels.filter((c) => selectedIds.includes(c.id));
-      }
+      const targetIds = selectedIds && selectedIds.length > 0 ? selectedIds : allChannels.map(c => c.id);
 
-      vaultStore.setChannels(filteredChannels);
-
-      // Preload the first few channels into the cache
-      const preloads = filteredChannels.slice(0, 5);
-      for (const ch of preloads) {
-        this.loadChannelMedia(ch.id).catch((e) => console.log(`Load channel ${ch.id} notice:`, e));
+      // Preload media for selected channels
+      for (const chId of targetIds.slice(0, 10)) {
+        this.loadChannelMedia(chId).catch((e) => console.log(`Load channel ${chId} notice:`, e));
       }
     } catch (err) {
       console.error("Error syncing channels:", err);
@@ -251,6 +253,11 @@ export class App {
       const items = await tgStreamClient.getChannelMediaMessages(channelId, 100);
       vaultStore.cacheChannelItems(channelId, items);
     } catch (err) {
+      if (err.message && err.message.includes("FLOOD_WAIT_")) {
+        const match = err.message.match(/FLOOD_WAIT_(\d+)/);
+        const waitSec = match ? parseInt(match[1], 10) : 30;
+        vaultStore.setRateLimit(waitSec);
+      }
       console.error(`Failed to fetch media for channel ${channelId}:`, err);
     }
   }
@@ -261,7 +268,31 @@ export class App {
     }
   }
 
-  async onAuthSuccess(selectedChannels = []) {
+  triggerUpload() {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.onchange = (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        const file = e.target.files[0];
+        alert(`Selected ${file.name} (${(file.size / 1024).toFixed(1)} KB) for upload to active channel.`);
+      }
+    };
+    input.click();
+  }
+
+  handleLogout() {
+    if (confirm("Are you sure you want to log out and clear all saved credentials and indexed drive cache?")) {
+      clearSession();
+      localStorage.removeItem("televault_selected_channels");
+      localStorage.removeItem("televault_custom_folders");
+      localStorage.removeItem("televault_pinned_ids");
+      localStorage.removeItem("televault_favorite_ids");
+      window.location.reload();
+    }
+  }
+
+  async onWizardComplete(selectedChannels = []) {
     await this.syncUserVaults(selectedChannels);
   }
 
