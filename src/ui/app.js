@@ -142,7 +142,19 @@ export class App {
       const stats = catalogStore.getStats();
       this.root.querySelector("#header-stats").textContent = `${stats.totalLectures} Video Lectures &bull; 100% Free MTProto`;
 
-      tgStreamClient.init().catch((e) => console.log("TG auto-init notice:", e));
+      // Check if session exists; if not, immediately present the login page
+      const hasSession = !!getSavedSession();
+      if (!hasSession) {
+        this.authModal.show();
+      } else {
+        const connected = await tgStreamClient.init().catch((e) => {
+          console.log("TG auto-init notice:", e);
+          return false;
+        });
+        if (!connected) {
+          this.authModal.show();
+        }
+      }
     } catch (err) {
       console.error("Error loading catalog:", err);
       this.root.querySelector("#header-stats").textContent = "Error loading catalog.json";
