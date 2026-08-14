@@ -1,4 +1,4 @@
-const PROGRESS_KEY = "jee_lecture_progress";
+const PROGRESS_KEY = "vaultgram_progress";
 
 export class ProgressTracker {
   static getAll() {

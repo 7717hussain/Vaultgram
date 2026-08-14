@@ -31,7 +31,7 @@ export class App {
           <div class="header-left">
             <div class="app-logo">
               <span class="logo-symbol">&#x25B6;</span>
-              <span class="logo-text">JEE Stream Vault</span>
+              <span class="logo-text">Vaultgram</span>
             </div>
             <div class="header-stats" id="header-stats">Loading catalog...</div>
           </div>

@@ -75,7 +75,7 @@ class TgStreamClient {
       connectionRetries: 5,
       useWSS: true,
       autoReconnect: true,
-      deviceModel: "Browser Chrome (JEE Stream)",
+      deviceModel: "Vaultgram Web Client",
       systemVersion: "Web/Linux",
       appVersion: "1.0.0",
     });

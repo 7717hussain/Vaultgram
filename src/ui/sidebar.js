@@ -30,7 +30,7 @@ export class Sidebar {
       <aside class="sidebar-wrapper">
         <!-- Logo / App Branding Header -->
         <div class="sidebar-brand">
-          <div class="brand-badge">JEE PRO</div>
+          <div class="brand-badge">VAULTGRAM</div>
           <div class="brand-title">Streaming Vault</div>
         </div>
 
