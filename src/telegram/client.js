@@ -158,14 +158,17 @@ class TgStreamClient {
         },
         {
           qrCode: async (qr) => {
-            let tokenStr = "";
-            if (typeof qr.token === "string") {
-              tokenStr = qr.token;
-            } else if (Buffer.isBuffer(qr.token) || qr.token instanceof Uint8Array) {
-              tokenStr = Buffer.from(qr.token).toString("base64url");
+            let base64 = "";
+            if (Buffer.isBuffer(qr.token) || qr.token instanceof Uint8Array) {
+              base64 = Buffer.from(qr.token).toString("base64");
+            } else if (typeof qr.token === "string") {
+              base64 = qr.token;
             } else if (qr.token && typeof qr.token.toString === "function") {
-              tokenStr = qr.token.toString("base64url");
+              base64 = qr.token.toString("base64");
             }
+            
+            // Standard browser-safe Base64URL transformation
+            const tokenStr = base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
             const tgUrl = `tg://login?token=${tokenStr}`;
             if (onQrUrl) onQrUrl(tgUrl);
           },
@@ -248,12 +251,13 @@ class TgStreamClient {
 
   // 4. Handle 2FA Password Verification
   async signInWithPassword(password) {
-    if (!password) {
+    const passStr = String(password || "");
+    if (!passStr.trim()) {
       throw new Error("2FA Password is required.");
     }
 
     const passwordSrpResult = await this.client.invoke(new Api.account.GetPassword());
-    const passwordSrpCheck = await computeCheck(passwordSrpResult, password);
+    const passwordSrpCheck = await computeCheck(passwordSrpResult, passStr);
     
     await this.client.invoke(
       new Api.auth.CheckPassword({
