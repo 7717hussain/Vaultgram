@@ -1,0 +1,19 @@
+{
+  "name": "jee-stream-portal",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "telegram": "^2.26.22",
+    "vidstack": "^1.12.12"
+  },
+  "devDependencies": {
+    "vite": "^6.2.0",
+    "vite-plugin-node-polyfills": "^0.23.0"
+  }
+}

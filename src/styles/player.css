@@ -1,0 +1,257 @@
+/* =========================================================================
+   OFFICIAL VIDSTACK PLAYER CONTAINER & THEME OVERRIDES
+   ========================================================================= */
+
+.vds-container-wrapper {
+  position: relative;
+  width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+  aspect-ratio: 16 / 9;
+  background-color: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.7);
+}
+
+media-player {
+  width: 100%;
+  height: 100%;
+  background-color: #000;
+  --media-brand: hsl(var(--foreground));
+  --media-focus-ring: hsl(var(--ring));
+  --media-border-radius: var(--radius);
+  --media-font-family: var(--font-sans);
+}
+
+/* =========================================================================
+   Lecture List Area (Pure Video Lectures)
+   ========================================================================= */
+
+.lecture-list-wrapper {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.chapter-header-banner {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  border-bottom: 1px solid hsl(var(--border));
+  padding-bottom: 14px;
+}
+
+.chapter-breadcrumbs {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  letter-spacing: 0.02em;
+}
+
+.chapter-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.chapter-title-main {
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: hsl(var(--foreground));
+}
+
+.chapter-count-badge {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  padding: 3px 10px;
+  border-radius: var(--radius);
+}
+
+.items-scroll-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Lecture Card */
+.lecture-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background-color: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.lecture-card:hover {
+  background-color: hsl(var(--accent));
+  border-color: hsl(var(--border));
+}
+
+.lecture-card.playing {
+  background-color: hsl(var(--secondary));
+  border-color: hsl(var(--ring));
+}
+
+.card-play-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius);
+  background-color: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--muted-foreground));
+  flex-shrink: 0;
+}
+
+.lecture-card.playing .card-play-icon {
+  background-color: hsl(var(--foreground));
+  color: hsl(var(--background));
+  border-color: hsl(var(--foreground));
+}
+
+.card-play-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.card-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.card-title {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-meta {
+  font-size: 0.725rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.resume-hint {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+}
+
+.card-progress-bar {
+  width: 100%;
+  height: 2px;
+  background-color: hsl(var(--muted));
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-top: 3px;
+}
+
+.card-progress-fill {
+  height: 100%;
+  background-color: hsl(var(--foreground));
+}
+
+.badge-live {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  padding: 2px 7px;
+  background-color: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  text-transform: uppercase;
+}
+
+.badge-done {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: hsl(var(--brand-emerald));
+  padding: 2px 7px;
+  background-color: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+}
+
+.items-empty {
+  color: hsl(var(--muted-foreground));
+  font-size: 0.85rem;
+  text-align: center;
+  padding: 32px;
+}
+
+/* Lecture Download Button & Spinner */
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+}
+
+.lec-download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--muted-foreground));
+  font-size: 0.725rem;
+  font-weight: 500;
+  padding: 4px 9px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: all 0.12s ease;
+  white-space: nowrap;
+}
+
+.lec-download-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.lec-download-btn:hover:not(:disabled) {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--ring));
+}
+
+.lec-download-btn:disabled {
+  opacity: 0.75;
+  cursor: not-allowed;
+  color: hsl(var(--brand-emerald));
+  border-color: hsl(var(--brand-emerald));
+}
+
+.download-spinner {
+  width: 10px;
+  height: 10px;
+  border: 2px solid hsl(var(--muted-foreground));
+  border-top-color: hsl(var(--foreground));
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+

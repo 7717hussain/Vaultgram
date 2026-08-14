@@ -1,0 +1,328 @@
+/* shadcn/ui Dialog / Modal Component */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.15s ease-out;
+}
+
+.modal-card {
+  width: 90%;
+  max-width: 480px;
+  background: hsl(var(--background));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.modal-title {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  color: hsl(var(--foreground));
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  font-size: 1.25rem;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(var(--radius) - 2px);
+  width: 24px;
+  height: 24px;
+  transition: all 0.12s ease;
+}
+
+.modal-close:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.modal-body {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.status-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  font-size: 0.775rem;
+  color: hsl(var(--foreground));
+}
+
+/* shadcn Tabs in Dialog */
+.auth-tabs {
+  display: flex;
+  background: hsl(var(--muted));
+  border-radius: var(--radius);
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid hsl(var(--border));
+}
+
+.auth-tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 6px;
+  border-radius: calc(var(--radius) - 2px);
+  cursor: pointer;
+  transition: all 0.12s ease;
+}
+
+.auth-tab-btn.active {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+  font-weight: 600;
+}
+
+.auth-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.auth-hint {
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.auth-input {
+  width: 100%;
+  background: transparent;
+  border: 1px solid hsl(var(--input));
+  border-radius: var(--radius);
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: 0.725rem;
+  color: hsl(var(--foreground));
+  resize: vertical;
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.auth-input-single {
+  width: 100%;
+  height: 36px;
+  background: transparent;
+  border: 1px solid hsl(var(--input));
+  border-radius: var(--radius);
+  padding: 0 12px;
+  font-size: 0.85rem;
+  color: hsl(var(--foreground));
+  outline: none;
+  transition: all 0.15s ease;
+}
+
+.auth-input:focus, .auth-input-single:focus {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 1px hsl(var(--ring));
+}
+
+.auth-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* shadcn Button Variants */
+.btn-primary {
+  flex: 1;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  font-size: 0.8rem;
+  font-weight: 500;
+  height: 36px;
+  padding: 0 16px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.btn-primary:hover {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: hsl(var(--secondary));
+  color: hsl(var(--secondary-foreground));
+  border: 1px solid hsl(var(--border));
+  font-size: 0.8rem;
+  font-weight: 500;
+  height: 36px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-secondary:hover {
+  background: hsl(var(--accent));
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.auth-msg {
+  font-size: 0.75rem;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  border: 1px solid transparent;
+}
+
+.auth-msg.info {
+  background: hsl(var(--muted));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+}
+
+.auth-msg.success {
+  background: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: hsl(var(--brand-emerald));
+}
+
+.auth-msg.error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #ef4444;
+}
+
+/* Keyboard Shortcuts Modal Styling */
+.shortcuts-modal-card {
+  max-width: 580px;
+}
+
+.modal-title-group {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.modal-icon {
+  font-size: 1.25rem;
+}
+
+.modal-subtitle {
+  font-size: 0.725rem;
+  color: hsl(var(--muted-foreground));
+  margin-top: 2px;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  font-size: 1.25rem;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: calc(var(--radius) - 2px);
+  width: 24px;
+  height: 24px;
+  transition: all 0.12s ease;
+}
+
+.modal-close-btn:hover {
+  background-color: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.shortcuts-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.shortcut-group {
+  background: hsl(var(--muted) / 0.3);
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+
+.shortcut-group-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: hsl(var(--brand-emerald));
+  margin-bottom: 10px;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 0.775rem;
+}
+
+.shortcut-label {
+  color: hsl(var(--muted-foreground));
+}
+
+.shortcut-key {
+  display: inline-block;
+  background: hsl(var(--secondary));
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  padding: 2px 7px;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.key-combo {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  color: hsl(var(--muted-foreground));
+}
+
