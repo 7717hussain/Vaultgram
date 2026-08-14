@@ -12,7 +12,9 @@ export class ShortcutsModal {
         <div class="modal-card shortcuts-modal-card">
           <div class="modal-header">
             <div class="modal-title-group">
-              <div class="modal-icon">⌨️</div>
+              <div class="modal-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="6" y1="8" x2="6" y2="8"/><line x1="10" y1="8" x2="10" y2="8"/><line x1="14" y1="8" x2="14" y2="8"/><line x1="18" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="6" y2="12"/><line x1="10" y1="12" x2="10" y2="12"/><line x1="14" y1="12" x2="14" y2="12"/><line x1="18" y1="12" x2="18" y2="12"/><line x1="7" y1="16" x2="17" y2="16"/></svg>
+              </div>
               <div>
                 <h3 class="modal-title">Keyboard Shortcuts</h3>
                 <p class="modal-subtitle">Quick hotkeys for fast navigation & player controls</p>

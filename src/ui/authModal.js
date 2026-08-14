@@ -48,10 +48,12 @@ export class AuthModal {
             <!-- shadcn Tab Selector -->
             <div class="shadcn-tabs-list" style="margin-bottom: 0.85rem;">
               <button class="shadcn-tab-trigger active" id="tab-phone-trigger">
-                <span>📱 Phone Number</span>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+                <span>Phone Number</span>
               </button>
               <button class="shadcn-tab-trigger" id="tab-session-trigger">
-                <span>🔑 String Session</span>
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-1.5 1.5L14 9M3 21l6.5-6.5M10 11l2 2-3 3-2-2 3-3z"/><circle cx="7.5" cy="16.5" r="4.5"/></svg>
+                <span>String Session</span>
               </button>
             </div>
 
@@ -109,8 +111,11 @@ export class AuthModal {
             <!-- Optional API Config Accordion -->
             <div class="api-credentials-accordion" style="margin-top: 0.85rem;">
               <div class="accordion-header" id="accordion-toggle">
-                <span>⚙️ Custom Telegram API App (Optional)</span>
-                <span id="accordion-arrow">▾</span>
+                <div style="display: flex; align-items: center; gap: 0.35rem;">
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                  <span>Custom Telegram API App (Optional)</span>
+                </div>
+                <span id="accordion-arrow">&darr;</span>
               </div>
               <div class="accordion-body hidden" id="accordion-content">
                 <div class="form-item">
@@ -141,7 +146,8 @@ export class AuthModal {
             <div class="channel-category-group">
               <div class="channel-category-header">
                 <div class="channel-category-title">
-                  <span>🌐 Public Channels</span>
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  <span>Public Channels</span>
                   <span id="public-channels-count" style="font-size: 0.725rem; color: hsl(var(--muted-foreground));">(0)</span>
                 </div>
                 <button class="channel-select-all-btn" id="btn-toggle-all-public">Select All</button>
@@ -155,7 +161,8 @@ export class AuthModal {
             <div class="channel-category-group">
               <div class="channel-category-header">
                 <div class="channel-category-title">
-                  <span>🔒 Private Channels & Groups</span>
+                  <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                  <span>Private Channels & Groups</span>
                   <span id="private-channels-count" style="font-size: 0.725rem; color: hsl(var(--muted-foreground));">(0)</span>
                 </div>
                 <button class="channel-select-all-btn" id="btn-toggle-all-private">Select All</button>
@@ -181,7 +188,10 @@ export class AuthModal {
 
           <!-- Footer Privacy Notice -->
           <div class="card-footer-privacy">
-            🔒 <strong>100% Decentralized & Private</strong>: Directly connects to Telegram MTProto Edge servers from your browser.
+            <div style="display: flex; align-items: center; justify-content: center; gap: 0.35rem;">
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              <span><strong>100% Decentralized & Private</strong>: Directly connects to Telegram MTProto Edge servers from your browser.</span>
+            </div>
           </div>
 
         </div>
