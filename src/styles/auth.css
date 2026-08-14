@@ -21,7 +21,7 @@
 /* shadcn Card Container */
 .shadcn-card {
   width: 100%;
-  max-width: 520px;
+  max-width: 560px;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: var(--radius);
@@ -104,24 +104,25 @@
   line-height: 1.4;
 }
 
-/* Tabs (shadcn style) */
+/* Tabs (shadcn style - 3 Columns in one line) */
 .shadcn-tabs-list {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   background: hsl(var(--muted));
   padding: 0.25rem;
   border-radius: var(--radius);
   gap: 0.25rem;
   border: 1px solid hsl(var(--border));
+  width: 100%;
 }
 
 .shadcn-tab-trigger {
   background: transparent;
   border: none;
   color: hsl(var(--muted-foreground));
-  font-size: 0.8125rem;
+  font-size: 0.775rem;
   font-weight: 500;
-  padding: 0.45rem 0.75rem;
+  padding: 0.45rem 0.5rem;
   border-radius: calc(var(--radius) - 3px);
   cursor: pointer;
   transition: all 0.15s ease;
@@ -129,6 +130,7 @@
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
+  white-space: nowrap;
 }
 
 .shadcn-tab-trigger:hover {

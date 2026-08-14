@@ -3,7 +3,7 @@ import { StringSession } from "telegram/sessions";
 import { ConnectionTCPObfuscated } from "telegram/network";
 import { PromisedWebSockets } from "telegram/extensions";
 import { computeCheck } from "telegram/Password";
-import { getSavedSession, getTgConfig, setSavedSession, setSavedUserProfile } from "./session.js";
+import { getSavedSession, getTgConfig, getTgConfigSync, setSavedSession, setSavedUserProfile } from "./session.js";
 
 // Official Telegram WebSocket Gateways for all 5 DCs
 const DC_WEBSOCKET_DOMAINS = {
@@ -68,9 +68,9 @@ class TgStreamClient {
   }
 
   createClient(sessionStr = "") {
-    const config = getTgConfig();
+    const config = getTgConfigSync();
     const stringSession = new StringSession(sessionStr || "");
-    return new TelegramClient(stringSession, config.apiId, config.apiHash, {
+    return new TelegramClient(stringSession, Number(config.apiId), String(config.apiHash), {
       connection: ConnectionWebSocketObfuscated,
       connectionRetries: 5,
       useWSS: true,
@@ -153,12 +153,20 @@ class TgStreamClient {
     try {
       const user = await this.client.signInUserWithQrCode(
         {
-          apiId: config.apiId,
-          apiHash: config.apiHash,
+          apiId: Number(config.apiId),
+          apiHash: String(config.apiHash),
         },
         {
           qrCode: async (qr) => {
-            const tgUrl = `tg://login?token=${encodeURIComponent(qr.token.toString("base64url"))}`;
+            let tokenStr = "";
+            if (typeof qr.token === "string") {
+              tokenStr = qr.token;
+            } else if (Buffer.isBuffer(qr.token) || qr.token instanceof Uint8Array) {
+              tokenStr = Buffer.from(qr.token).toString("base64url");
+            } else if (qr.token && typeof qr.token.toString === "function") {
+              tokenStr = qr.token.toString("base64url");
+            }
+            const tgUrl = `tg://login?token=${tokenStr}`;
             if (onQrUrl) onQrUrl(tgUrl);
           },
           password: async (hint) => {
