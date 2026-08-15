@@ -144,47 +144,38 @@ class TgStreamClient {
     }
   }
 
-  // 1. QR Code Login Flow
+  // 1. QR Code Login Flow (Official GramJS QR Authorization)
   async startQrLogin(onQrUrl, onNeeds2FA) {
     const config = await getTgConfig();
     this.client = this.createClient("");
     await this.client.connect();
 
+    const apiId = Number(config.apiId);
+    const apiHash = String(config.apiHash);
+
     try {
       const user = await this.client.signInUserWithQrCode(
+        { apiId, apiHash },
         {
-          apiId: Number(config.apiId),
-          apiHash: String(config.apiHash),
-        },
-        {
-          qrCode: async (qr) => {
-            let base64 = "";
-            const tok = qr.token || qr;
-            if (Buffer.isBuffer(tok) || tok instanceof Uint8Array) {
-              base64 = Buffer.from(tok).toString("base64");
-            } else if (typeof tok === "string") {
-              base64 = tok;
-            } else if (tok && typeof tok.toString === "function") {
-              base64 = tok.toString("base64");
-            }
+          qrCode: async ({ token, expires }) => {
+            const rawTok = token;
+            const base64 = Buffer.isBuffer(rawTok) || rawTok instanceof Uint8Array
+              ? Buffer.from(rawTok).toString("base64")
+              : typeof rawTok === "string" ? rawTok : String(rawTok);
             
-            // Standard browser-safe Base64URL transformation
             const tokenStr = base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
             const tgUrl = `tg://login?token=${tokenStr}`;
-            if (onQrUrl) {
-              try {
-                onQrUrl(tgUrl);
-              } catch (e) {
-                console.warn("onQrUrl error:", e);
-              }
-            }
+            if (onQrUrl) onQrUrl(tgUrl);
           },
           password: async (hint) => {
-            if (onNeeds2FA) return await onNeeds2FA(hint);
-            return prompt("Enter your 2FA Password:");
+            if (onNeeds2FA) {
+              const pass = await onNeeds2FA(hint);
+              return pass || "";
+            }
+            return "";
           },
           onError: async (err) => {
-            console.error("signInUserWithQrCode onError:", err);
+            console.warn("QR Login error tick:", err);
             return false;
           },
         }
@@ -192,11 +183,11 @@ class TgStreamClient {
 
       const saved = this.client.session.save();
       await setSavedSession(saved);
-      this.user = user;
-      await setSavedUserProfile(user);
+      this.user = user || await this.client.getMe();
+      await setSavedUserProfile(this.user);
       this.isConnected = true;
       this.notifyStatus();
-      return { session: saved, user };
+      return { session: saved, user: this.user };
     } catch (err) {
       console.error("QR Login error:", err);
       throw err;

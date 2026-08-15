@@ -109,8 +109,10 @@ export class AuthModal {
     qrSpan.textContent = "QR Code";
     tabQr.appendChild(qrSpan);
     tabQr.onclick = () => {
-      this.activeTab = "qr";
-      this.renderStepView();
+      if (this.activeTab !== "qr") {
+        this.activeTab = "qr";
+        this.renderStepView();
+      }
     };
 
     // Tab 2: Phone
@@ -121,8 +123,12 @@ export class AuthModal {
     phoneSpan.textContent = "Phone OTP";
     tabPhone.appendChild(phoneSpan);
     tabPhone.onclick = () => {
-      this.activeTab = "phone";
-      this.renderStepView();
+      if (this.activeTab !== "phone") {
+        this.qrPollActive = false;
+        this.isGeneratingQr = false;
+        this.activeTab = "phone";
+        this.renderStepView();
+      }
     };
 
     // Tab 3: Session String
@@ -133,8 +139,12 @@ export class AuthModal {
     sessSpan.textContent = "Session String";
     tabSession.appendChild(sessSpan);
     tabSession.onclick = () => {
-      this.activeTab = "session";
-      this.renderStepView();
+      if (this.activeTab !== "session") {
+        this.qrPollActive = false;
+        this.isGeneratingQr = false;
+        this.activeTab = "session";
+        this.renderStepView();
+      }
     };
 
     tabsList.appendChild(tabQr);
