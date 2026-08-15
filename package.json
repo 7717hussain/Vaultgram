@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ai:context": "node scripts/ai-context.js"
   },
   "dependencies": {
     "@radix-ui/react-context-menu": "^2.2.4",

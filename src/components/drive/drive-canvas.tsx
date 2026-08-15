@@ -1,10 +1,14 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import { useDriveStore } from "@/lib/stores/drive-store";
+import { useTransferStore } from "@/lib/stores/transfer-store";
 import { DriveFile } from "@/lib/telegram/indexer";
 import { DriveToolbar } from "./drive-toolbar";
 import { FileCard } from "./file-card";
 import { FileTableRow } from "./file-table-row";
 import { MediaPreviewModal } from "./media-preview-modal";
+import { DropzoneOverlay } from "./dropzone-overlay";
+import { UploadChannelSelectModal } from "./upload-channel-select-modal";
+import { DownloadsView } from "./downloads-view";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Inbox, ChevronDown } from "lucide-react";
@@ -12,6 +16,8 @@ import { toast } from "sonner";
 
 export const DriveCanvas: React.FC = () => {
   const {
+    channels,
+    activeChannelId,
     files,
     activeFilter,
     customFolders,
@@ -29,11 +35,22 @@ export const DriveCanvas: React.FC = () => {
     setPreviewFile,
   } = useDriveStore();
 
+  const { enqueueDownload, enqueueUpload } = useTransferStore();
+  const hiddenFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const [pendingUploadFiles, setPendingUploadFiles] = useState<File[]>([]);
+  const [isChannelSelectOpen, setIsChannelSelectOpen] = useState(false);
+
+  const getActiveChannelTitle = () => {
+    if (activeChannelId === "UNIFIED") return "All Channels (Unified)";
+    const ch = channels.find((c) => c.id === activeChannelId);
+    return ch?.title || "Active Channel";
+  };
+
   // 1. Filter Files based on active navigation category, folder, or search query
   const filteredFiles = useMemo(() => {
     let result = [...files];
 
-    // Filter by Category or Folder
     if (activeFilter === "IMAGE") {
       result = result.filter((f) => f.category === "IMAGE");
     } else if (activeFilter === "VIDEO") {
@@ -55,7 +72,6 @@ export const DriveCanvas: React.FC = () => {
       result = result.filter((f) => folder.fileIds.includes(f.id));
     }
 
-    // Filter by Search Query
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       result = result.filter(
@@ -66,7 +82,6 @@ export const DriveCanvas: React.FC = () => {
       );
     }
 
-    // Sort Files
     result.sort((a, b) => {
       let valA: any = a[sortField];
       let valB: any = b[sortField];
@@ -100,37 +115,86 @@ export const DriveCanvas: React.FC = () => {
 
   const hasMoreToRender = visibleFiles.length < filteredFiles.length;
 
+  // 3. Initiate Chunked Stream Download
   const handleDownload = (file: DriveFile) => {
-    toast.info(`Preparing chunked download for ${file.name}...`);
-    const a = document.createElement("a");
-    a.href = file.streamUrl || "#";
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    enqueueDownload(file);
+  };
+
+  // 4. Handle Upload File Ingestion (From Button or Dropzone)
+  const handleQueueFiles = (fileList: FileList | File[]) => {
+    const fileArray = Array.from(fileList);
+    if (fileArray.length === 0) return;
+
+    if (activeChannelId === "UNIFIED") {
+      setPendingUploadFiles(fileArray);
+      setIsChannelSelectOpen(true);
+    } else {
+      const activeCh = channels.find((c) => c.id === activeChannelId);
+      const chTitle = activeCh?.title || "Channel";
+      for (const file of fileArray) {
+        enqueueUpload(file, activeChannelId, chTitle);
+      }
+      toast.success(`Queued ${fileArray.length} file(s) for upload.`);
+    }
+  };
+
+  const handleChannelSelectedForUpload = (channelId: string, channelTitle: string) => {
+    setIsChannelSelectOpen(false);
+    for (const file of pendingUploadFiles) {
+      enqueueUpload(file, channelId, channelTitle);
+    }
+    toast.success(`Queued ${pendingUploadFiles.length} file(s) for upload to ${channelTitle}.`);
+    setPendingUploadFiles([]);
   };
 
   const handleTriggerUpload = () => {
-    const input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    input.onchange = (e: any) => {
-      if (e.target.files && e.target.files.length > 0) {
-        toast.success(`Queued ${e.target.files.length} file(s) for upload to active channel.`);
-      }
-    };
-    input.click();
+    hiddenFileInputRef.current?.click();
   };
 
   return (
-    <main className="flex flex-1 flex-col overflow-hidden bg-zinc-950">
-      {/* Top Toolbar with sync pill */}
-      <DriveToolbar onTriggerUpload={handleTriggerUpload} />
+    <main className="relative flex flex-1 flex-col overflow-hidden bg-zinc-950">
+      {/* Hidden File Input */}
+      <input
+        ref={hiddenFileInputRef}
+        type="file"
+        multiple
+        className="hidden"
+        onChange={(e) => {
+          if (e.target.files) {
+            handleQueueFiles(e.target.files);
+            e.target.value = "";
+          }
+        }}
+      />
 
-      {/* Main Content Area */}
-      <ScrollArea className="flex-1 p-5">
+      {/* Full-Window Drag and Drop Overlay */}
+      <DropzoneOverlay
+        activeChannelTitle={getActiveChannelTitle()}
+        onFilesDropped={handleQueueFiles}
+      />
+
+      {/* Channel Selector for Unified View Uploads */}
+      <UploadChannelSelectModal
+        isOpen={isChannelSelectOpen}
+        channels={channels}
+        filesCount={pendingUploadFiles.length}
+        onSelect={handleChannelSelectedForUpload}
+        onCancel={() => {
+          setIsChannelSelectOpen(false);
+          setPendingUploadFiles([]);
+        }}
+      />
+
+      {/* Top Toolbar (Hidden on Downloads view for dedicated header) */}
+      {activeFilter !== "DOWNLOADS" && <DriveToolbar onTriggerUpload={handleTriggerUpload} />}
+
+      {/* Render Dedicated Downloads View if Selected */}
+      {activeFilter === "DOWNLOADS" ? (
+        <DownloadsView />
+      ) : (
+        /* Main Content Area */
+        <ScrollArea className="flex-1 p-5">
         {files.length === 0 && syncStatus.isSyncing ? (
-          /* Initial Shimmer Skeletons */
           viewMode === "grid" ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((i) => (
@@ -158,7 +222,6 @@ export const DriveCanvas: React.FC = () => {
             </div>
           )
         ) : filteredFiles.length === 0 ? (
-          /* Empty State */
           <div className="flex h-[420px] flex-col items-center justify-center gap-2.5 text-center text-zinc-500">
             <div className="flex h-12 w-12 items-center justify-center rounded-md bg-zinc-900 border border-zinc-800 text-zinc-400">
               <Inbox className="h-6 w-6 stroke-[1.25px]" />
@@ -169,20 +232,18 @@ export const DriveCanvas: React.FC = () => {
             <p className="text-[11px] text-zinc-500 max-w-xs leading-relaxed">
               {searchQuery
                 ? "Try searching for a different keyword or check spelling."
-                : "Files sent in your selected Telegram channels will appear here automatically."}
+                : "Drag & drop files anywhere to upload directly to Telegram."}
             </p>
           </div>
         ) : (
           <div className="space-y-6">
             {viewMode === "grid" ? (
-              /* Grid View Mode */
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
                 {visibleFiles.map((file) => (
                   <FileCard key={file.id} file={file} onDownload={handleDownload} />
                 ))}
               </div>
             ) : (
-              /* List Table View Mode */
               <div className="rounded-md border border-zinc-800/80 bg-zinc-950/60 overflow-hidden">
                 <table className="w-full text-left border-collapse">
                   <thead>
@@ -204,7 +265,6 @@ export const DriveCanvas: React.FC = () => {
               </div>
             )}
 
-            {/* Load More Pagination Trigger for 10,000+ files */}
             {hasMoreToRender && (
               <div className="flex flex-col items-center justify-center gap-2 py-4 border-t border-zinc-900">
                 <span className="text-[11px] font-mono text-zinc-500">
@@ -224,6 +284,7 @@ export const DriveCanvas: React.FC = () => {
           </div>
         )}
       </ScrollArea>
+      )}
 
       {/* Media Preview Lightbox Modal */}
       <MediaPreviewModal

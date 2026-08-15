@@ -6,8 +6,8 @@ export const VAULTGRAM_SYSTEM_TAG = "[VAULTGRAM_CONFIG_V1]";
 export const SYSTEM_CHANNEL_TITLE = "Vaultgram Vault (Do Not Delete)";
 export const SYSTEM_CHANNEL_ABOUT = `${VAULTGRAM_SYSTEM_TAG} System metadata and cloud configuration storage for Vaultgram Drive.`;
 
-const KEY_CONFIG_CHANNEL_ID = "vaultgram_system_channel_id";
-const KEY_CONFIG_MESSAGE_ID = "vaultgram_system_msg_id";
+const KEY_CONFIG_CHANNEL_ID = "vaultgram_config_channel_id";
+const KEY_CONFIG_MESSAGE_ID = "vaultgram_config_msg_id";
 
 export interface VaultgramCloudConfig {
   version: 1;
@@ -33,11 +33,25 @@ export class TelegramSyncStore {
   private syncDebounceTimer: any = null;
   private isWriting = false;
   private pendingPayload: VaultgramCloudConfig | null = null;
+  private initPromise: Promise<{ channelId: string; config: VaultgramCloudConfig | null }> | null = null;
 
   // --------------------------------------------------------------------------
-  // 1. Discover or Create System Channel (Resilient Non-Blocking)
+  // 1. In-Memory Mutex & Sequential Idempotency Lock
   // --------------------------------------------------------------------------
   async initSystemChannel(): Promise<{ channelId: string; config: VaultgramCloudConfig | null }> {
+    if (this.initPromise) {
+      console.log("[Sync] Initialization already in progress, returning existing promise.");
+      return this.initPromise;
+    }
+
+    this.initPromise = this.performSyncBootstrap().finally(() => {
+      this.initPromise = null;
+    });
+
+    return this.initPromise;
+  }
+
+  private async performSyncBootstrap(): Promise<{ channelId: string; config: VaultgramCloudConfig | null }> {
     try {
       if (!tgStreamClient.client || !tgStreamClient.isConnected) {
         return { channelId: "", config: null };
@@ -48,50 +62,81 @@ export class TelegramSyncStore {
       let cachedChId = await get<string>(KEY_CONFIG_CHANNEL_ID);
       let cachedMsgId = await get<number>(KEY_CONFIG_MESSAGE_ID);
 
-      // Try resolving cached channel ID first
+      // =========================================================================
+      // STEP 1: Check Local IndexedDB First
+      // =========================================================================
       if (cachedChId) {
         try {
           const entity = await client.getEntity(parseInt(cachedChId, 10));
           if (entity) {
+            console.log(`[Sync] Found existing config channel from IndexedDB: ${cachedChId}`);
             targetChannel = entity;
           }
         } catch {
+          console.warn("[Sync] Cached config channel ID invalid or inaccessible, checking dialogs...");
           targetChannel = null;
         }
       }
 
-      // If not found in cache, scan user dialogs for description tag
+      // =========================================================================
+      // STEP 2: Scan Existing Dialogs for Tag & Title (Handle Existing Duplicates)
+      // =========================================================================
       if (!targetChannel) {
         try {
           const dialogs = await client.getDialogs({ limit: 100 });
+          const matchingChannels: any[] = [];
+
           for (const d of dialogs) {
             if (d.isChannel && d.entity) {
               const entity = d.entity;
+              const title = entity.title || d.title || "";
+
+              // Fast check on title first
+              if (title.trim() === SYSTEM_CHANNEL_TITLE) {
+                matchingChannels.push(entity);
+                continue;
+              }
+
+              // Deep check on description/about if title doesn't match
               try {
                 const fullChannel: any = await client.invoke(
                   new Api.channels.GetFullChannel({ channel: entity })
                 );
                 const about = fullChannel?.fullChat?.about || "";
                 if (about.includes(VAULTGRAM_SYSTEM_TAG)) {
-                  targetChannel = entity;
-                  cachedChId = String(entity.id);
-                  await set(KEY_CONFIG_CHANNEL_ID, cachedChId);
-                  break;
+                  matchingChannels.push(entity);
                 }
               } catch {
-                // Ignore per-channel errors
+                // Ignore per-channel access errors
               }
             }
           }
+
+          if (matchingChannels.length > 0) {
+            if (matchingChannels.length > 1) {
+              console.log(
+                `[Sync] Multiple config channels detected (count: ${matchingChannels.length}). Binding to: ${matchingChannels[0].id}`
+              );
+            } else {
+              console.log(`[Sync] Found existing config channel in dialogs: ${matchingChannels[0].id}`);
+            }
+
+            // Pick the first discovered matching channel
+            targetChannel = matchingChannels[0];
+            cachedChId = String(targetChannel.id);
+            await set(KEY_CONFIG_CHANNEL_ID, cachedChId);
+          }
         } catch (err) {
-          console.warn("[SyncStore] Non-fatal notice scanning dialogs:", err);
+          console.warn("[Sync] Non-fatal notice during dialog scan:", err);
         }
       }
 
-      // Auto-create private system channel if still missing
+      // =========================================================================
+      // STEP 3: Create Channel ONLY if 0 Matches Exist
+      // =========================================================================
       if (!targetChannel) {
         try {
-          console.log("[SyncStore] Creating private Vaultgram Vault system channel...");
+          console.log("[Sync] No channel found. Creating new system channel...");
           const result: any = await client.invoke(
             new Api.channels.CreateChannel({
               title: SYSTEM_CHANNEL_TITLE,
@@ -105,10 +150,12 @@ export class TelegramSyncStore {
           if (createdChat) {
             targetChannel = createdChat;
             cachedChId = String(createdChat.id);
+            // Immediately persist before sending or pinning
             await set(KEY_CONFIG_CHANNEL_ID, cachedChId);
+            console.log(`[Sync] Created system channel: ${cachedChId}`);
           }
         } catch (err) {
-          console.warn("[SyncStore] Non-fatal notice creating system channel:", err);
+          console.warn("[Sync] Non-fatal notice creating system channel:", err);
         }
       }
 
@@ -147,7 +194,7 @@ export class TelegramSyncStore {
           }
         }
       } catch (err) {
-        console.warn("[SyncStore] Non-fatal notice reading pinned config message:", err);
+        console.warn("[Sync] Non-fatal notice reading pinned config message:", err);
       }
 
       return {
@@ -155,7 +202,7 @@ export class TelegramSyncStore {
         config: remoteConfig,
       };
     } catch (globalErr) {
-      console.warn("[SyncStore] Cloud sync initialization caught error (fallback to local):", globalErr);
+      console.warn("[Sync] Cloud sync initialization caught error (fallback to local):", globalErr);
       return { channelId: "", config: null };
     }
   }
@@ -215,9 +262,9 @@ export class TelegramSyncStore {
           });
         }
       }
-      console.log("[SyncStore] Cloud configuration synced to Telegram Vault successfully.");
+      console.log("[Sync] Cloud configuration synced to Telegram Vault successfully.");
     } catch (err: any) {
-      console.warn("[SyncStore] Re-posting new pin for cloud configuration...", err);
+      console.warn("[Sync] Re-posting new pin for cloud configuration...", err);
       try {
         const client = tgStreamClient.client;
         const sent: any = await client.sendMessage(this.configChannelEntity, {
@@ -230,7 +277,7 @@ export class TelegramSyncStore {
           await client.pinMessage(this.configChannelEntity, sent.id, { notify: false });
         }
       } catch (postErr) {
-        console.warn("[SyncStore] Background write error (retaining local state):", postErr);
+        console.warn("[Sync] Background write error (retaining local state):", postErr);
       }
     } finally {
       this.isWriting = false;

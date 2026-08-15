@@ -13,6 +13,7 @@ export type NavFilter =
   | "PINNED"
   | "FAVORITES"
   | "RECENTS"
+  | "DOWNLOADS"
   | string; // custom folder id
 
 export type SortField = "date" | "name" | "size";

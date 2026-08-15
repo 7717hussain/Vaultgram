@@ -30,6 +30,7 @@ import {
   SlidersHorizontal,
   LogOut,
   Bookmark,
+  Download,
 } from "lucide-react";
 import { cn, formatBytes } from "@/lib/utils";
 
@@ -106,10 +107,11 @@ export const Sidebar: React.FC = () => {
     { id: "AUDIO", label: "Audio", icon: Music, count: counts.AUDIO },
   ];
 
-  const quickAccessItems: { id: NavFilter; label: string; icon: React.FC<any>; count: number }[] = [
+  const quickAccessItems: { id: NavFilter; label: string; icon: React.FC<any>; count?: number }[] = [
     { id: "PINNED", label: "Pinned", icon: Pin, count: counts.PINNED },
     { id: "FAVORITES", label: "Favorites", icon: Star, count: counts.FAVORITES },
     { id: "RECENTS", label: "Recent Uploads", icon: Clock, count: counts.RECENTS },
+    { id: "DOWNLOADS", label: "Downloads Manager", icon: Download },
   ];
 
   return (
@@ -235,9 +237,11 @@ export const Sidebar: React.FC = () => {
                     <Icon className="h-3.5 w-3.5 stroke-[1.5px]" />
                     <span>{item.label}</span>
                   </div>
-                  <span className="font-mono text-[10px] text-zinc-500">
-                    {item.count}
-                  </span>
+                  {item.count !== undefined && (
+                    <span className="font-mono text-[10px] text-zinc-500">
+                      {item.count}
+                    </span>
+                  )}
                 </button>
               );
             })}

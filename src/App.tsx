@@ -2,10 +2,12 @@ import React, { useEffect } from "react";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { useChannelWizardStore } from "@/lib/stores/channel-wizard-store";
 import { useDriveStore } from "@/lib/stores/drive-store";
+import { useTransferStore } from "@/lib/stores/transfer-store";
 import { AuthPortal } from "@/components/auth/auth-portal";
 import { ChannelWizard } from "@/components/wizard/channel-wizard";
 import { Sidebar } from "@/components/layout/sidebar";
 import { DriveCanvas } from "@/components/drive/drive-canvas";
+import { TransferDock } from "@/components/drive/transfer-dock";
 import { HardDrive } from "lucide-react";
 import { Toaster } from "sonner";
 
@@ -13,8 +15,12 @@ export const App: React.FC = () => {
   const { bootStatus, isConnected, init } = useAuthStore();
   const { isWizardCompleted, loadSavedSelection } = useChannelWizardStore();
   const { initDrive } = useDriveStore();
+  const { hydrateStore } = useTransferStore();
 
-  // Strictly decoupled bootstrap: auth verification is the single source of truth
+  useEffect(() => {
+    hydrateStore();
+  }, [hydrateStore]);
+
   useEffect(() => {
     async function bootstrap() {
       try {
@@ -23,9 +29,8 @@ export const App: React.FC = () => {
           try {
             const hasSavedChannels = await loadSavedSelection();
             if (hasSavedChannels) {
-              // Launch drive in background without blocking or failing auth
               initDrive().catch((err) => {
-                console.warn("[App] Background drive init warning (using cache):", err);
+                console.warn("[App] Background drive init warning:", err);
               });
             }
           } catch (wizardErr) {
@@ -39,7 +44,6 @@ export const App: React.FC = () => {
     bootstrap();
   }, [init, loadSavedSelection, initDrive]);
 
-  // When user finishes the wizard in session, trigger drive initialization
   useEffect(() => {
     if (isConnected && isWizardCompleted) {
       initDrive().catch((e) => console.warn("[App] Drive init warning:", e));
@@ -51,7 +55,6 @@ export const App: React.FC = () => {
       <Toaster position="bottom-right" richColors theme="dark" />
 
       {bootStatus === "BOOTING" ? (
-        /* Minimalist Centered Boot Screen */
         <div className="flex min-h-screen flex-col items-center justify-center bg-zinc-950">
           <div className="relative flex flex-col items-center gap-3.5">
             <div className="flex h-10 w-10 items-center justify-center rounded-md bg-zinc-900 border border-zinc-800 text-zinc-200 shadow-sm animate-pulse">
@@ -66,16 +69,15 @@ export const App: React.FC = () => {
           </div>
         </div>
       ) : !isConnected ? (
-        /* Stage 1: Auth Portal (Rendered ONLY when confirmed unauthenticated) */
         <AuthPortal />
       ) : !isWizardCompleted ? (
-        /* Stage 2: Channel Selection Wizard */
         <ChannelWizard />
       ) : (
-        /* Stage 3: Full Drive Workspace */
-        <div className="flex h-screen w-screen overflow-hidden">
+        <div className="relative flex h-screen w-screen overflow-hidden">
           <Sidebar />
           <DriveCanvas />
+          {/* Floating Transfer Queue Dock */}
+          <TransferDock />
         </div>
       )}
     </div>
