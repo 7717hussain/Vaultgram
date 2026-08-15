@@ -253,8 +253,7 @@ export class AuthModal {
           });
         },
         async (hint) => {
-          const pass = prompt(`Your Telegram account requires 2FA Password ${hint ? `(${hint})` : ""}:`);
-          return pass || "";
+          return await this.request2FAPassword(hint);
         }
       );
 
@@ -268,6 +267,89 @@ export class AuthModal {
         this.showAlert(err.message || "QR Code expired or failed to connect.", "error");
       }
     }
+  }
+
+  // Beautiful in-app 2FA Dialog modal (replaces native browser prompt)
+  request2FAPassword(hint) {
+    return new Promise((resolve) => {
+      const existing = document.getElementById("auth-2fa-modal");
+      if (existing) existing.remove();
+
+      const overlay = document.createElement("div");
+      overlay.id = "auth-2fa-modal";
+      overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.8);backdrop-filter:blur(4px);z-index:10000;display:flex;align-items:center;justify-content:center;padding:1rem;";
+
+      const dialog = document.createElement("div");
+      dialog.className = "shadcn-card";
+      dialog.style.cssText = "max-width:420px;width:100%;box-shadow:0 20px 25px -5px rgba(0,0,0,0.5);";
+
+      const header = document.createElement("div");
+      header.className = "shadcn-card-header";
+      header.innerHTML = `
+        <h3 class="shadcn-card-title" style="font-size:1.15rem;">Two-Step Verification</h3>
+        <p class="shadcn-card-description">${hint ? `Hint: <strong>${hint}</strong>` : "Your Telegram account is protected with a Cloud Password."}</p>
+      `;
+      dialog.appendChild(header);
+
+      const errBox = document.createElement("div");
+      errBox.className = "shadcn-alert error hidden";
+      errBox.style.cssText = "margin-bottom:12px;font-size:0.75rem;";
+      dialog.appendChild(errBox);
+
+      const form = document.createElement("div");
+      form.style.cssText = "display:flex;flex-direction:column;gap:12px;";
+
+      const input = document.createElement("input");
+      input.type = "password";
+      input.className = "shadcn-input";
+      input.placeholder = "Enter your 2FA password";
+      input.autocomplete = "current-password";
+      form.appendChild(input);
+
+      const btnRow = document.createElement("div");
+      btnRow.style.cssText = "display:flex;gap:8px;justify-content:flex-end;";
+
+      const btnCancel = document.createElement("button");
+      btnCancel.className = "shadcn-button ghost";
+      btnCancel.textContent = "Cancel";
+      btnCancel.onclick = () => {
+        overlay.remove();
+        resolve("");
+      };
+
+      const btnSubmit = document.createElement("button");
+      btnSubmit.className = "shadcn-button";
+      btnSubmit.textContent = "Submit Password";
+
+      const handleSubmit = async () => {
+        const pass = input.value.trim();
+        if (!pass) {
+          errBox.textContent = "Please enter your password.";
+          errBox.classList.remove("hidden");
+          return;
+        }
+        btnSubmit.disabled = true;
+        btnSubmit.textContent = "Verifying...";
+        errBox.classList.add("hidden");
+
+        overlay.remove();
+        resolve(pass);
+      };
+
+      btnSubmit.onclick = handleSubmit;
+      input.onkeydown = (e) => {
+        if (e.key === "Enter") handleSubmit();
+      };
+
+      btnRow.appendChild(btnCancel);
+      btnRow.appendChild(btnSubmit);
+      form.appendChild(btnRow);
+      dialog.appendChild(form);
+      overlay.appendChild(dialog);
+      document.body.appendChild(overlay);
+
+      setTimeout(() => input.focus(), 50);
+    });
   }
 
   // --- TAB 2: PHONE NUMBER + OTP + 2FA STATE MACHINE ---

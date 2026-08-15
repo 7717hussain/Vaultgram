@@ -1,8 +1,11 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 import { nodePolyfills } from 'vite-plugin-node-polyfills';
+import path from 'path';
 
 export default defineConfig({
   plugins: [
+    react(),
     nodePolyfills({
       include: ['buffer', 'crypto', 'stream', 'util', 'events', 'path', 'os'],
       globals: {
@@ -12,12 +15,17 @@ export default defineConfig({
       },
     }),
   ],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   server: {
     port: 5173,
-    host: true
+    host: true,
   },
   build: {
     target: 'esnext',
-    outDir: 'dist'
-  }
+    outDir: 'dist',
+  },
 });

@@ -5,18 +5,43 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "tsc && vite build",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@radix-ui/react-context-menu": "^2.2.4",
+    "@radix-ui/react-dialog": "^1.1.4",
+    "@radix-ui/react-dropdown-menu": "^2.1.4",
+    "@radix-ui/react-progress": "^1.1.1",
+    "@radix-ui/react-scroll-area": "^1.2.2",
+    "@radix-ui/react-separator": "^1.1.1",
+    "@radix-ui/react-tabs": "^1.1.2",
+    "@radix-ui/react-tooltip": "^1.1.6",
+    "clsx": "^2.1.1",
+    "framer-motion": "^11.18.2",
     "idb-keyval": "^6.3.0",
-    "lucide": "^1.31.0",
+    "lucide-react": "^0.473.0",
     "qrcode": "^1.5.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "sonner": "^1.7.4",
+    "tailwind-merge": "^2.6.0",
+    "tailwindcss-animate": "^1.0.7",
     "telegram": "^2.26.22",
-    "vidstack": "^1.12.12"
+    "vidstack": "^1.12.12",
+    "zustand": "^5.0.3"
   },
   "devDependencies": {
-    "vite": "^6.2.0",
+    "@types/node": "^22.10.7",
+    "@types/qrcode": "^1.5.5",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.5.1",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.7",
     "vite-plugin-node-polyfills": "^0.23.0"
   }
 }

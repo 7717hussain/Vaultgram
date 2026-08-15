@@ -21,16 +21,19 @@ export class TelegramBrowserWebSocket extends PromisedWebSockets {
         return `wss://${domain}/apiws${testServers ? "_test" : ""}`;
       }
     }
-    if (ip.startsWith("149.154.175")) {
+    if (ip.includes("149.154.167.91") || ip.includes("vesta") || String(ip) === "4") {
+      return `wss://${DC_WEBSOCKET_DOMAINS[4]}/apiws${testServers ? "_test" : ""}`;
+    }
+    if (ip.startsWith("149.154.175") || ip.includes("pluto") || String(ip) === "1") {
       return `wss://${DC_WEBSOCKET_DOMAINS[1]}/apiws${testServers ? "_test" : ""}`;
     }
-    if (ip.startsWith("149.154.167")) {
+    if (ip.startsWith("149.154.167") || ip.includes("venus") || String(ip) === "2") {
       return `wss://${DC_WEBSOCKET_DOMAINS[2]}/apiws${testServers ? "_test" : ""}`;
     }
-    if (ip.startsWith("91.108.56")) {
+    if (ip.startsWith("91.108.56") || ip.includes("flora") || String(ip) === "5") {
       return `wss://${DC_WEBSOCKET_DOMAINS[5]}/apiws${testServers ? "_test" : ""}`;
     }
-    return `wss://${DC_WEBSOCKET_DOMAINS[5]}/apiws${testServers ? "_test" : ""}`;
+    return `wss://${DC_WEBSOCKET_DOMAINS[4]}/apiws${testServers ? "_test" : ""}`;
   }
 }
 
@@ -70,9 +73,13 @@ class TgStreamClient {
   createClient(sessionStr = "") {
     const config = getTgConfigSync();
     const stringSession = new StringSession(sessionStr || "");
+    if (!sessionStr) {
+      // Pre-assign primary production DC 4 for instant WebSocket handshake
+      stringSession.setDC(4, "149.154.167.91", 443);
+    }
     return new TelegramClient(stringSession, Number(config.apiId), String(config.apiHash), {
       connection: ConnectionWebSocketObfuscated,
-      connectionRetries: 5,
+      connectionRetries: 3,
       useWSS: true,
       autoReconnect: true,
       deviceModel: "Vaultgram Web Client",
@@ -144,46 +151,142 @@ class TgStreamClient {
     }
   }
 
-  // 1. QR Code Login Flow (Official GramJS QR Authorization)
+  // 1. QR Code Login Flow (Direct High-Speed MTProto Token Stream)
   async startQrLogin(onQrUrl, onNeeds2FA) {
     const config = await getTgConfig();
     this.client = this.createClient("");
-    await this.client.connect();
+    
+    // Connect with 6s timeout
+    const connectPromise = this.client.connect();
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Telegram MTProto connection timed out. Please check network.")), 6000)
+    );
+    await Promise.race([connectPromise, timeoutPromise]);
 
     const apiId = Number(config.apiId);
     const apiHash = String(config.apiHash);
 
     try {
-      const user = await this.client.signInUserWithQrCode(
-        { apiId, apiHash },
-        {
-          qrCode: async ({ token, expires }) => {
-            const rawTok = token;
-            const base64 = Buffer.isBuffer(rawTok) || rawTok instanceof Uint8Array
-              ? Buffer.from(rawTok).toString("base64")
-              : typeof rawTok === "string" ? rawTok : String(rawTok);
-            
-            const tokenStr = base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-            const tgUrl = `tg://login?token=${tokenStr}`;
-            if (onQrUrl) onQrUrl(tgUrl);
-          },
-          password: async (hint) => {
-            if (onNeeds2FA) {
-              const pass = await onNeeds2FA(hint);
-              return pass || "";
-            }
-            return "";
-          },
-          onError: async (err) => {
-            console.warn("QR Login error tick:", err);
-            return false;
-          },
+      let isScanningComplete = false;
+      let user = null;
+
+      // Listen for background device authorization events
+      const updateHandler = (update) => {
+        if (update instanceof Api.UpdateLoginToken) {
+          isScanningComplete = true;
         }
-      );
+      };
+      this.client.addEventHandler(updateHandler);
+
+      // Loop: Continually fetch / refresh token until scanned
+      const tokenLoop = async () => {
+        while (!isScanningComplete && this.client) {
+          try {
+            const tokenRes = await this.client.invoke(
+              new Api.auth.ExportLoginToken({
+                apiId,
+                apiHash,
+                exceptIds: [],
+              })
+            );
+
+            if (tokenRes instanceof Api.auth.LoginToken) {
+              const rawTok = tokenRes.token;
+              const base64 = Buffer.isBuffer(rawTok) || rawTok instanceof Uint8Array
+                ? Buffer.from(rawTok).toString("base64")
+                : typeof rawTok === "string" ? rawTok : String(rawTok);
+              
+              const tokenStr = base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+              const tgUrl = `tg://login?token=${tokenStr}`;
+              if (onQrUrl) onQrUrl(tgUrl);
+
+              const expires = tokenRes.expires || (Date.now() / 1000 + 30);
+              const waitSec = Math.max(5, Math.min(expires - Date.now() / 1000 - 3, 25));
+              await new Promise((r) => setTimeout(r, waitSec * 1000));
+            } else if (tokenRes instanceof Api.auth.LoginTokenSuccess) {
+              isScanningComplete = true;
+              user = tokenRes.authorization.user;
+              break;
+            } else if (tokenRes instanceof Api.auth.LoginTokenMigrateTo) {
+              await this.client._switchDC(tokenRes.dcId);
+              const imported = await this.client.invoke(
+                new Api.auth.ImportLoginToken({ token: tokenRes.token })
+              );
+              if (imported instanceof Api.auth.LoginTokenSuccess) {
+                isScanningComplete = true;
+                user = imported.authorization.user;
+                break;
+              }
+            }
+          } catch (loopErr) {
+            const msg = String(loopErr.errorMessage || loopErr.message || loopErr);
+            if (msg.includes("SESSION_PASSWORD_NEEDED")) {
+              isScanningComplete = true;
+              if (onNeeds2FA) {
+                const pass = await onNeeds2FA();
+                if (pass) {
+                  user = await this.signInWithPassword(pass);
+                  break;
+                }
+              }
+            }
+            if (isScanningComplete) break;
+            await new Promise((r) => setTimeout(r, 2000));
+          }
+        }
+      };
+
+      // Launch token emission in background
+      tokenLoop();
+
+      // Wait loop for completion
+      while (!isScanningComplete && !user && this.client) {
+        await new Promise((r) => setTimeout(r, 1200));
+        try {
+          const checkRes = await this.client.invoke(
+            new Api.auth.ExportLoginToken({
+              apiId,
+              apiHash,
+              exceptIds: [],
+            })
+          );
+          if (checkRes instanceof Api.auth.LoginTokenSuccess) {
+            user = checkRes.authorization.user;
+            isScanningComplete = true;
+          } else if (checkRes instanceof Api.auth.LoginTokenMigrateTo) {
+            await this.client._switchDC(checkRes.dcId);
+            const imported = await this.client.invoke(
+              new Api.auth.ImportLoginToken({ token: checkRes.token })
+            );
+            if (imported instanceof Api.auth.LoginTokenSuccess) {
+              user = imported.authorization.user;
+              isScanningComplete = true;
+            }
+          }
+        } catch (authErr) {
+          const msg = String(authErr.errorMessage || authErr.message || authErr);
+          if (msg.includes("SESSION_PASSWORD_NEEDED")) {
+            isScanningComplete = true;
+            if (onNeeds2FA) {
+              const pass = await onNeeds2FA();
+              if (pass) {
+                user = await this.signInWithPassword(pass);
+                break;
+              }
+            }
+          }
+        }
+      }
+
+      this.client.removeEventHandler(updateHandler);
+
+      if (!user) {
+        user = await this.client.getMe();
+      }
 
       const saved = this.client.session.save();
       await setSavedSession(saved);
-      this.user = user || await this.client.getMe();
+      this.user = user;
       await setSavedUserProfile(this.user);
       this.isConnected = true;
       this.notifyStatus();
@@ -258,26 +361,20 @@ class TgStreamClient {
       throw new Error("2FA Password is required.");
     }
 
-    const config = await getTgConfig();
     try {
-      const user = await this.client.signInWithPassword(
-        {
-          apiId: Number(config.apiId),
-          apiHash: String(config.apiHash),
-        },
-        {
-          password: async () => passStr,
-          onError: async (err) => {
-            console.error("2FA Check Error:", err);
-            // Returning true immediately halts the loop and throws err
-            return true;
-          },
-        }
+      const passwordSrpResult = await this.client.invoke(new Api.account.GetPassword());
+      const passwordSrpCheck = await computeCheck(passwordSrpResult, passStr);
+      
+      const checkRes = await this.client.invoke(
+        new Api.auth.CheckPassword({
+          password: passwordSrpCheck,
+        })
       );
 
+      const user = checkRes.user || (checkRes.authorization && checkRes.authorization.user) || await this.client.getMe();
       const saved = this.client.session.save();
       await setSavedSession(saved);
-      this.user = user || await this.client.getMe();
+      this.user = user;
       await setSavedUserProfile(this.user);
       this.isConnected = true;
       this.notifyStatus();
