@@ -2,10 +2,9 @@ import React, { useState, useMemo } from "react";
 import { useTransferStore, TransferTask } from "@/lib/stores/transfer-store";
 import { formatBytes, cn } from "@/lib/utils";
 import {
-  Download,
   Play,
   Pause,
-  RotateCcw,
+  RotateCw,
   Trash2,
   Sliders,
   Search,
@@ -15,15 +14,25 @@ import {
   Archive,
   Music,
   File,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
+type TypeFilter = "ALL" | "DOWNLOADS" | "UPLOADS";
 type StatusFilter = "ALL" | "ACTIVE" | "QUEUED" | "PAUSED" | "COMPLETED" | "FAILED";
 
-const FILTER_TABS: { id: StatusFilter; label: string }[] = [
+const TYPE_TABS: { id: TypeFilter; label: string }[] = [
   { id: "ALL", label: "All Transfers" },
+  { id: "DOWNLOADS", label: "Downloads" },
+  { id: "UPLOADS", label: "Uploads" },
+];
+
+const STATUS_TABS: { id: StatusFilter; label: string }[] = [
+  { id: "ALL", label: "All" },
   { id: "ACTIVE", label: "Active" },
   { id: "QUEUED", label: "Queued" },
   { id: "PAUSED", label: "Paused" },
@@ -31,7 +40,7 @@ const FILTER_TABS: { id: StatusFilter; label: string }[] = [
   { id: "FAILED", label: "Failed" },
 ];
 
-export const DownloadsView: React.FC = () => {
+export const TransfersView: React.FC = () => {
   const {
     tasks,
     maxConcurrentDownloads,
@@ -39,6 +48,7 @@ export const DownloadsView: React.FC = () => {
     pauseTask,
     resumeTask,
     retryTask,
+    cancelTask,
     removeTask,
     clearCompleted,
     pauseAllActive,
@@ -46,21 +56,30 @@ export const DownloadsView: React.FC = () => {
     enqueueDownload,
   } = useTransferStore();
 
+  const [typeFilter, setTypeFilter] = useState<TypeFilter>("ALL");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("ALL");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const downloadTasks = useMemo(() => {
-    return tasks.filter((t) => t.type === "DOWNLOAD");
-  }, [tasks]);
+  // Base type filtering
+  const typeFilteredTasks = useMemo(() => {
+    if (typeFilter === "DOWNLOADS") {
+      return tasks.filter((t) => t.type === "DOWNLOAD");
+    }
+    if (typeFilter === "UPLOADS") {
+      return tasks.filter((t) => t.type === "UPLOAD");
+    }
+    return tasks;
+  }, [tasks, typeFilter]);
 
-  const activeCount = downloadTasks.filter((t) => t.status === "ACTIVE").length;
-  const queuedCount = downloadTasks.filter((t) => t.status === "QUEUED").length;
-  const pausedCount = downloadTasks.filter((t) => t.status === "PAUSED").length;
-  const completedCount = downloadTasks.filter((t) => t.status === "COMPLETED").length;
-  const failedCount = downloadTasks.filter((t) => t.status === "FAILED").length;
+  // Counts for status tabs
+  const activeCount = typeFilteredTasks.filter((t) => t.status === "ACTIVE").length;
+  const queuedCount = typeFilteredTasks.filter((t) => t.status === "QUEUED").length;
+  const pausedCount = typeFilteredTasks.filter((t) => t.status === "PAUSED").length;
+  const completedCount = typeFilteredTasks.filter((t) => t.status === "COMPLETED").length;
+  const failedCount = typeFilteredTasks.filter((t) => t.status === "FAILED").length;
 
-  const tabCounts: Record<StatusFilter, number> = {
-    ALL: downloadTasks.length,
+  const statusTabCounts: Record<StatusFilter, number> = {
+    ALL: typeFilteredTasks.length,
     ACTIVE: activeCount,
     QUEUED: queuedCount,
     PAUSED: pausedCount,
@@ -69,7 +88,7 @@ export const DownloadsView: React.FC = () => {
   };
 
   const filteredTasks = useMemo(() => {
-    let result = downloadTasks;
+    let result = typeFilteredTasks;
 
     if (statusFilter !== "ALL") {
       result = result.filter((t) => t.status === statusFilter);
@@ -81,7 +100,7 @@ export const DownloadsView: React.FC = () => {
     }
 
     return result;
-  }, [downloadTasks, statusFilter, searchQuery]);
+  }, [typeFilteredTasks, statusFilter, searchQuery]);
 
   const getFileIcon = (mime?: string) => {
     if (!mime) return File;
@@ -111,12 +130,12 @@ export const DownloadsView: React.FC = () => {
           {/* Clean Title & Count */}
           <div className="flex items-center gap-3">
             <div className="flex h-8 w-8 items-center justify-center rounded-sm bg-zinc-900 border border-zinc-800 text-zinc-200">
-              <Download className="h-4 w-4 stroke-[1.75px]" />
+              <ArrowUpDown className="h-4 w-4 stroke-[1.75px]" />
             </div>
             <div className="flex items-center gap-2">
-              <h1 className="text-base font-semibold text-zinc-100">Downloads</h1>
-              <span className="font-mono text-xs px-2 py-0.5 rounded-full bg-zinc-900 border border-zinc-800 text-zinc-400">
-                {downloadTasks.length} Total
+              <h1 className="text-base font-semibold text-zinc-100">Transfer Manager</h1>
+              <span className="font-mono text-xs px-2 py-0.5 rounded-sm bg-zinc-900 border border-zinc-800/80 text-zinc-400">
+                {tasks.length} Total
               </span>
             </div>
           </div>
@@ -192,28 +211,48 @@ export const DownloadsView: React.FC = () => {
           </div>
         </div>
 
-        {/* Bottom Row: Filter Tabs & Search Bar */}
+        {/* Bottom Row: Type Filters + Status Tabs + Search Bar */}
         <div className="flex items-center justify-between gap-4 pt-1">
-          {/* Filter Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-            {FILTER_TABS.map((tab) => {
-              const count = tabCounts[tab.id];
-              return (
+          <div className="flex items-center gap-3">
+            {/* Type Tabs (All / Downloads / Uploads) */}
+            <div className="flex items-center gap-1 bg-zinc-900/70 p-0.5 rounded-md border border-zinc-800/80">
+              {TYPE_TABS.map((tab) => (
                 <button
                   key={tab.id}
-                  onClick={() => setStatusFilter(tab.id)}
+                  onClick={() => setTypeFilter(tab.id)}
                   className={cn(
-                    "px-3 py-1.5 rounded-sm text-xs font-medium transition-colors flex items-center gap-1.5",
-                    statusFilter === tab.id
-                      ? "bg-zinc-800 text-zinc-100 border border-zinc-700/60 shadow-sm"
-                      : "text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-300"
+                    "px-2.5 py-1 rounded-sm text-xs font-medium transition-colors",
+                    typeFilter === tab.id
+                      ? "bg-zinc-800 text-zinc-100 shadow-sm font-semibold"
+                      : "text-zinc-400 hover:text-zinc-200"
                   )}
                 >
-                  <span>{tab.label}</span>
-                  <span className="font-mono text-[10px] opacity-70">({count})</span>
+                  {tab.label}
                 </button>
-              );
-            })}
+              ))}
+            </div>
+
+            {/* Status Tabs */}
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar">
+              {STATUS_TABS.map((tab) => {
+                const count = statusTabCounts[tab.id];
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setStatusFilter(tab.id)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-sm text-xs font-medium transition-colors flex items-center gap-1.5",
+                      statusFilter === tab.id
+                        ? "bg-zinc-800/90 text-zinc-100 border border-zinc-700/60 shadow-sm"
+                        : "text-zinc-400 hover:bg-zinc-900/80 hover:text-zinc-300"
+                    )}
+                  >
+                    <span>{tab.label}</span>
+                    <span className="font-mono text-[10px] opacity-70">({count})</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {/* Search Input */}
@@ -221,7 +260,7 @@ export const DownloadsView: React.FC = () => {
             <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-zinc-500 stroke-[1.5px]" />
             <Input
               type="text"
-              placeholder="Search downloads..."
+              placeholder="Search transfers..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="h-8 pl-8 pr-3 text-xs bg-zinc-900/90 border-zinc-800 rounded-md placeholder:text-zinc-500 focus:border-zinc-700"
@@ -235,29 +274,53 @@ export const DownloadsView: React.FC = () => {
         {filteredTasks.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-24 text-center">
             <div className="flex h-12 w-12 items-center justify-center rounded-md border border-zinc-800 bg-zinc-900/50 text-zinc-500 mb-3">
-              <Download className="h-6 w-6 stroke-[1.25px]" />
+              <ArrowUpDown className="h-6 w-6 stroke-[1.25px]" />
             </div>
-            <h3 className="text-sm font-medium text-zinc-300">No downloads found</h3>
+            <h3 className="text-sm font-medium text-zinc-300">No transfers found</h3>
             <p className="text-xs text-zinc-500 max-w-xs mt-1">
-              {statusFilter === "ALL"
-                ? "Your transfer ledger is clear. Download files from any connected channel to manage them here."
-                : `No downloads matching filter "${statusFilter.toLowerCase()}".`}
+              {statusFilter === "ALL" && typeFilter === "ALL"
+                ? "Your transfer ledger is clear. Upload or download files from any connected channel to track them here."
+                : `No transfers matching selected filters.`}
             </p>
           </div>
         ) : (
           filteredTasks.map((task) => {
             const Icon = getFileIcon(task.mimeType);
+            const isUpload = task.type === "UPLOAD";
 
             return (
               <div
                 key={task.id}
                 className="group flex items-center justify-between gap-4 rounded-md border border-zinc-800/60 bg-zinc-900/30 p-3.5 hover:bg-zinc-900/60 hover:border-zinc-800 transition-all"
               >
-                {/* Left: Icon & File Meta */}
+                {/* Left: Direction + Icon & File Meta */}
                 <div className="flex items-center gap-3 min-w-0 max-w-md">
+                  {/* Direction Badge */}
+                  <div
+                    className={cn(
+                      "flex items-center gap-0.5 px-1.5 py-1 rounded-[2px] text-[10px] font-mono shrink-0",
+                      isUpload
+                        ? "bg-indigo-950/70 border border-indigo-900/60 text-indigo-300"
+                        : "bg-zinc-900 border border-zinc-800 text-zinc-300"
+                    )}
+                  >
+                    {isUpload ? (
+                      <>
+                        <ArrowUp className="h-3 w-3 stroke-[2px]" />
+                        <span>UP</span>
+                      </>
+                    ) : (
+                      <>
+                        <ArrowDown className="h-3 w-3 stroke-[2px]" />
+                        <span>DL</span>
+                      </>
+                    )}
+                  </div>
+
                   <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm bg-zinc-950 border border-zinc-800 text-zinc-300">
                     <Icon className="h-4 w-4 stroke-[1.5px]" />
                   </div>
+
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="truncate text-xs font-medium text-zinc-100" title={task.fileName}>
@@ -315,6 +378,8 @@ export const DownloadsView: React.FC = () => {
                           ? "bg-emerald-500"
                           : task.status === "FAILED"
                           ? "bg-rose-500"
+                          : isUpload
+                          ? "bg-indigo-400"
                           : "bg-zinc-100"
                       )}
                       style={{ width: `${Math.max(1, task.progress)}%` }}
@@ -344,62 +409,98 @@ export const DownloadsView: React.FC = () => {
                   {/* Actions according to status */}
                   <div className="flex items-center gap-1">
                     {task.status === "ACTIVE" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => pauseTask(task.id)}
-                        title="Pause Download"
-                        className="h-7 w-7 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
-                      >
-                        <Pause className="h-3.5 w-3.5" />
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => pauseTask(task.id)}
+                          title="Pause Transfer"
+                          className="h-7 w-7 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
+                        >
+                          <Pause className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => cancelTask(task.id)}
+                          title="Cancel Transfer"
+                          className="h-7 w-7 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
                     )}
 
                     {task.status === "PAUSED" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => resumeTask(task.id)}
-                        title="Resume Download"
-                        className="h-7 w-7 text-amber-400 hover:text-amber-300 hover:bg-zinc-800"
-                      >
-                        <Play className="h-3.5 w-3.5" />
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => resumeTask(task.id)}
+                          title="Resume Transfer"
+                          className="h-7 w-7 text-amber-400 hover:text-amber-300 hover:bg-zinc-800"
+                        >
+                          <Play className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => cancelTask(task.id)}
+                          title="Cancel Transfer"
+                          className="h-7 w-7 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
                     )}
 
                     {task.status === "FAILED" && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => retryTask(task.id)}
-                        title="Retry Download"
-                        className="h-7 w-7 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
-                      >
-                        <RotateCcw className="h-3.5 w-3.5" />
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => retryTask(task.id)}
+                          title="Retry Transfer"
+                          className="h-7 w-7 text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"
+                        >
+                          <RotateCw className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeTask(task.id)}
+                          title="Dismiss from Ledger"
+                          className="h-7 w-7 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
                     )}
 
                     {task.status === "COMPLETED" && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleRedownload(task)}
-                        title="Re-download File"
-                        className="h-7 text-xs font-mono text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 px-2"
-                      >
-                        Save Again
-                      </Button>
+                      <>
+                        {!isUpload && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRedownload(task)}
+                            title="Re-download File"
+                            className="h-7 text-xs font-mono text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 px-2"
+                          >
+                            Save Again
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeTask(task.id)}
+                          title="Remove from Ledger"
+                          className="h-7 w-7 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </>
                     )}
-
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeTask(task.id)}
-                      title="Remove from Ledger"
-                      className="h-7 w-7 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
                   </div>
                 </div>
               </div>

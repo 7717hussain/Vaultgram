@@ -2,21 +2,34 @@ import React from "react";
 import { useTransferStore, TransferTask } from "@/lib/stores/transfer-store";
 import { useDriveStore } from "@/lib/stores/drive-store";
 import {
-  Upload,
-  Download,
   X,
   ChevronDown,
   ChevronUp,
   CheckCircle2,
+  Pause,
+  Play,
+  RotateCw,
+  ArrowDown,
+  ArrowUp,
 } from "lucide-react";
 import { formatBytes, cn } from "@/lib/utils";
 
 export const TransferDock: React.FC = () => {
-  const { tasks, isOpen, toggleOpen, cancelTask, clearCompleted } = useTransferStore();
+  const {
+    tasks,
+    isOpen,
+    toggleOpen,
+    pauseTask,
+    resumeTask,
+    retryTask,
+    cancelTask,
+    removeTask,
+    clearCompleted,
+  } = useTransferStore();
   const { activeFilter } = useDriveStore();
 
-  // If user is currently on the dedicated Downloads View, hide the floating dock completely
-  if (activeFilter === "DOWNLOADS" || tasks.length === 0) {
+  // If user is currently on the dedicated Transfers View, hide the floating dock completely
+  if (activeFilter === "TRANSFERS" || tasks.length === 0) {
     return null;
   }
 
@@ -34,7 +47,7 @@ export const TransferDock: React.FC = () => {
     (tasks.length || 1);
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-80 sm:w-96 rounded-md border border-zinc-800/90 bg-zinc-950 shadow-2xl overflow-hidden select-none">
+    <div className="fixed bottom-4 right-4 z-50 w-80 sm:w-96 rounded-md border border-zinc-800/90 bg-zinc-950 shadow-2xl overflow-hidden select-none animate-in fade-in-0 slide-in-from-bottom-2 duration-150 ease-out transition-all">
       {/* Dock Header Bar */}
       <div
         onClick={toggleOpen}
@@ -109,7 +122,15 @@ export const TransferDock: React.FC = () => {
       {isOpen && (
         <div className="max-h-72 overflow-y-auto divide-y divide-zinc-900 bg-zinc-950 p-2 space-y-2">
           {tasks.map((task) => (
-            <TransferTaskRow key={task.id} task={task} onCancel={() => cancelTask(task.id)} />
+            <TransferTaskRow
+              key={task.id}
+              task={task}
+              onPause={() => pauseTask(task.id)}
+              onResume={() => resumeTask(task.id)}
+              onRetry={() => retryTask(task.id)}
+              onCancel={() => cancelTask(task.id)}
+              onRemove={() => removeTask(task.id)}
+            />
           ))}
         </div>
       )}
@@ -119,30 +140,56 @@ export const TransferDock: React.FC = () => {
 
 interface TransferTaskRowProps {
   task: TransferTask;
+  onPause: () => void;
+  onResume: () => void;
+  onRetry: () => void;
   onCancel: () => void;
+  onRemove: () => void;
 }
 
-const TransferTaskRow: React.FC<TransferTaskRowProps> = ({ task, onCancel }) => {
+const TransferTaskRow: React.FC<TransferTaskRowProps> = ({
+  task,
+  onPause,
+  onResume,
+  onRetry,
+  onCancel,
+  onRemove,
+}) => {
   const isUpload = task.type === "UPLOAD";
 
   return (
     <div className="group flex flex-col gap-1.5 rounded-sm bg-zinc-900/40 border border-zinc-800/40 p-2.5 transition-all">
-      {/* Top Row: Icon + Name + Badge + Cancel */}
+      {/* Top Row: Direction Badge + Name + Status + Controls */}
       <div className="flex items-center justify-between gap-2 overflow-hidden">
-        <div className="flex items-center gap-2 overflow-hidden min-w-0">
-          <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-sm bg-zinc-950 border border-zinc-800 text-zinc-300">
+        <div className="flex items-center gap-1.5 overflow-hidden min-w-0">
+          {/* Direction Pill */}
+          <div
+            className={cn(
+              "flex items-center gap-0.5 px-1 py-0.5 rounded-[2px] text-[9px] font-mono shrink-0",
+              isUpload
+                ? "bg-indigo-950/70 border border-indigo-900/60 text-indigo-300"
+                : "bg-zinc-900 border border-zinc-800 text-zinc-300"
+            )}
+          >
             {isUpload ? (
-              <Upload className="h-3 w-3 stroke-[1.75px]" />
+              <>
+                <ArrowUp className="h-2.5 w-2.5 stroke-[2px]" />
+                <span>UP</span>
+              </>
             ) : (
-              <Download className="h-3 w-3 stroke-[1.75px]" />
+              <>
+                <ArrowDown className="h-2.5 w-2.5 stroke-[2px]" />
+                <span>DL</span>
+              </>
             )}
           </div>
+
           <span className="truncate text-xs font-medium text-zinc-200" title={task.fileName}>
             {task.fileName}
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <span
             className={cn(
               "font-mono text-[9px] px-1.5 py-0.5 rounded-[2px] uppercase",
@@ -160,15 +207,56 @@ const TransferTaskRow: React.FC<TransferTaskRowProps> = ({ task, onCancel }) => 
             {task.status}
           </span>
 
-          {task.status !== "COMPLETED" && (
-            <button
-              onClick={onCancel}
-              title="Cancel Transfer"
-              className="p-0.5 text-zinc-500 hover:text-zinc-200 transition-colors"
-            >
-              <X className="h-3.5 w-3.5 stroke-[1.5px]" />
-            </button>
-          )}
+          {/* Interactive Actions per State */}
+          <div className="flex items-center">
+            {task.status === "ACTIVE" && (
+              <button
+                onClick={onPause}
+                title="Pause Transfer"
+                className="p-1 text-zinc-400 hover:text-amber-400 hover:bg-zinc-800 rounded transition-colors"
+              >
+                <Pause className="h-3.5 w-3.5 stroke-[1.5px]" />
+              </button>
+            )}
+
+            {task.status === "PAUSED" && (
+              <button
+                onClick={onResume}
+                title="Resume Transfer"
+                className="p-1 text-amber-400 hover:text-amber-300 hover:bg-zinc-800 rounded transition-colors"
+              >
+                <Play className="h-3.5 w-3.5 stroke-[1.5px]" />
+              </button>
+            )}
+
+            {task.status === "FAILED" && (
+              <button
+                onClick={onRetry}
+                title="Retry Transfer"
+                className="p-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded transition-colors"
+              >
+                <RotateCw className="h-3.5 w-3.5 stroke-[1.5px]" />
+              </button>
+            )}
+
+            {task.status !== "COMPLETED" ? (
+              <button
+                onClick={onCancel}
+                title="Cancel Transfer"
+                className="p-1 text-zinc-500 hover:text-rose-400 hover:bg-zinc-800 rounded transition-colors"
+              >
+                <X className="h-3.5 w-3.5 stroke-[1.5px]" />
+              </button>
+            ) : (
+              <button
+                onClick={onRemove}
+                title="Dismiss Transfer"
+                className="p-1 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 rounded transition-colors"
+              >
+                <X className="h-3.5 w-3.5 stroke-[1.5px]" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -183,6 +271,8 @@ const TransferTaskRow: React.FC<TransferTaskRowProps> = ({ task, onCancel }) => 
               ? "bg-emerald-500"
               : task.status === "FAILED"
               ? "bg-rose-500"
+              : isUpload
+              ? "bg-indigo-400"
               : "bg-zinc-200"
           )}
           style={{ width: `${Math.max(2, task.progress)}%` }}

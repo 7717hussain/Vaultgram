@@ -30,6 +30,7 @@ export const DriveToolbar: React.FC<DriveToolbarProps> = ({ onTriggerUpload }) =
     activeFilter,
     customFolders,
     searchQuery,
+    remoteSearchStatus,
     viewMode,
     sortField,
     sortOrder,
@@ -64,8 +65,8 @@ export const DriveToolbar: React.FC<DriveToolbarProps> = ({ onTriggerUpload }) =
         return "Pinned Items";
       case "FAVORITES":
         return "Favorites";
-      case "RECENTS":
-        return "Recent Uploads";
+      case "TRANSFERS":
+        return "Transfer Manager";
       default:
         return customFolders[activeFilter]?.name || "Folder";
     }
@@ -90,17 +91,35 @@ export const DriveToolbar: React.FC<DriveToolbarProps> = ({ onTriggerUpload }) =
         )}
       </div>
 
-      {/* Center: Search input */}
-      <div className="w-72 max-w-sm">
-        <div className="relative">
+      {/* Center: Search input + Hybrid Indicator */}
+      <div className="w-80 max-w-md">
+        <div className="relative flex items-center">
           <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-zinc-500 stroke-[1.5px]" />
           <Input
             type="text"
-            placeholder="Search files in active view..."
+            placeholder="Search files (local + Telegram MTProto)..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-8 pl-8 text-xs bg-zinc-900/60 border-zinc-800 rounded-md placeholder:text-zinc-500 focus:border-zinc-700"
+            className="h-8 pl-8 pr-28 text-xs bg-zinc-900/60 border-zinc-800 rounded-md placeholder:text-zinc-500 focus:border-zinc-700"
           />
+
+          {/* Dynamic Search Status Badge */}
+          {searchQuery && (
+            <div className="absolute right-2 flex items-center gap-1 font-mono text-[9px] text-zinc-400">
+              {remoteSearchStatus === "LOCAL" && (
+                <span className="text-zinc-400">Local instant</span>
+              )}
+              {remoteSearchStatus === "REMOTE" && (
+                <span className="flex items-center gap-1 text-indigo-400">
+                  <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                  <span>Searching TG...</span>
+                </span>
+              )}
+              {remoteSearchStatus === "DONE" && (
+                <span className="text-emerald-400">All Results</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 

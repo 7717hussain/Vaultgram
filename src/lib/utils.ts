@@ -5,13 +5,25 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-export function formatBytes(bytes: number, decimals = 1): string {
-  if (!bytes || bytes === 0) return "0 B";
+export function formatBytes(bytes: number): string {
+  if (!bytes || bytes <= 0) return "0 B";
   const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
   const sizes = ["B", "KB", "MB", "GB", "TB"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+  const roundedValue = Math.round(bytes / Math.pow(k, i));
+  return `${roundedValue} ${sizes[i]}`;
+}
+
+export function formatSpeed(bytesPerSec: number): string {
+  if (!bytesPerSec || bytesPerSec <= 0) return "0 B/s";
+  if (bytesPerSec < 1024 * 1024) {
+    return `${Math.round(bytesPerSec / 1024)} KB/s`;
+  }
+  return `${Math.round(bytesPerSec / (1024 * 1024))} MB/s`;
+}
+
+export function formatPercent(progress: number): string {
+  return `${Math.round(progress)}%`;
 }
 
 export function formatDate(timestamp?: number): string {

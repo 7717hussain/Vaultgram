@@ -3,7 +3,7 @@ import { useTransferStore, TransferTask } from "../../stores/transfer-store";
 import { useDriveStore } from "../../stores/drive-store";
 import { normalizeTelegramMessage } from "../indexer";
 import { appendChannelFilesBatchToDb } from "../session";
-import { formatBytes } from "../../utils";
+import { formatSpeed } from "../../utils";
 
 export async function executeUploadTask(task: TransferTask) {
   const store = useTransferStore.getState();
@@ -70,7 +70,7 @@ export async function executeUploadTask(task: TransferTask) {
       if (timeDiffSec >= 0.5 || currentBytes === totalBytes) {
         const bytesDiff = Math.max(0, currentBytes - lastBytes);
         const bytesPerSec = timeDiffSec > 0 ? bytesDiff / timeDiffSec : 0;
-        const speedStr = `${formatBytes(bytesPerSec)}/s`;
+        const speedStr = formatSpeed(bytesPerSec);
 
         const remainingBytes = Math.max(0, totalBytes - currentBytes);
         const remainingSec = bytesPerSec > 0 ? Math.round(remainingBytes / bytesPerSec) : 0;

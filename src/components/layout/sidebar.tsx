@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useDriveStore, NavFilter } from "@/lib/stores/drive-store";
 import { useAuthStore } from "@/lib/stores/auth-store";
 import { useChannelWizardStore } from "@/lib/stores/channel-wizard-store";
+import { useTransferStore } from "@/lib/stores/transfer-store";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,6 @@ import {
   Music,
   Pin,
   Star,
-  Clock,
   Plus,
   Folder,
   Trash2,
@@ -30,7 +30,7 @@ import {
   SlidersHorizontal,
   LogOut,
   Bookmark,
-  Download,
+  ArrowUpDown,
 } from "lucide-react";
 import { cn, formatBytes } from "@/lib/utils";
 
@@ -51,9 +51,12 @@ export const Sidebar: React.FC = () => {
 
   const { logout } = useAuthStore();
   const { resetWizard } = useChannelWizardStore();
+  const { tasks } = useTransferStore();
 
   const [isNewFolderOpen, setIsNewFolderOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+
+  const activeTransfersCount = tasks.filter((t) => t.status === "ACTIVE" || t.status === "QUEUED").length;
 
   // Compute category counts
   const counts = React.useMemo(() => {
@@ -66,7 +69,6 @@ export const Sidebar: React.FC = () => {
       AUDIO: 0,
       PINNED: pinnedFileIds.size,
       FAVORITES: favoriteFileIds.size,
-      RECENTS: Math.min(files.length, 25),
     };
     for (const f of files) {
       if (f.category === "IMAGE") c.IMAGE++;
@@ -107,11 +109,16 @@ export const Sidebar: React.FC = () => {
     { id: "AUDIO", label: "Audio", icon: Music, count: counts.AUDIO },
   ];
 
-  const quickAccessItems: { id: NavFilter; label: string; icon: React.FC<any>; count?: number }[] = [
+  const quickAccessItems: { id: NavFilter; label: string; icon: React.FC<any>; count?: number; isBadge?: boolean }[] = [
     { id: "PINNED", label: "Pinned", icon: Pin, count: counts.PINNED },
     { id: "FAVORITES", label: "Favorites", icon: Star, count: counts.FAVORITES },
-    { id: "RECENTS", label: "Recent Uploads", icon: Clock, count: counts.RECENTS },
-    { id: "DOWNLOADS", label: "Downloads Manager", icon: Download },
+    {
+      id: "TRANSFERS",
+      label: "Transfer Manager",
+      icon: ArrowUpDown,
+      count: activeTransfersCount > 0 ? activeTransfersCount : undefined,
+      isBadge: activeTransfersCount > 0,
+    },
   ];
 
   return (
@@ -238,7 +245,14 @@ export const Sidebar: React.FC = () => {
                     <span>{item.label}</span>
                   </div>
                   {item.count !== undefined && (
-                    <span className="font-mono text-[10px] text-zinc-500">
+                    <span
+                      className={cn(
+                        "font-mono text-[10px]",
+                        item.isBadge
+                          ? "px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 animate-pulse"
+                          : "text-zinc-500"
+                      )}
+                    >
                       {item.count}
                     </span>
                   )}

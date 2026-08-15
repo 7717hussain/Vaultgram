@@ -1,7 +1,9 @@
 import { create } from "zustand";
-import { ChannelMeta, getSavedSelectedChannels, getChannelFilesFromDb } from "../telegram/session";
+import { ChannelMeta, getSavedSelectedChannels, getChannelFilesFromDb, appendChannelFilesBatchToDb } from "../telegram/session";
 import { DriveFile, telegramMediaIndexer } from "../telegram/indexer";
 import { telegramSyncStore, VaultgramCloudConfig } from "../telegram/syncStore";
+import { tgStreamClient } from "../telegram/client";
+import { searchTelegramRemote } from "../telegram/search";
 
 export type NavFilter =
   | "ALL"
@@ -12,8 +14,7 @@ export type NavFilter =
   | "AUDIO"
   | "PINNED"
   | "FAVORITES"
-  | "RECENTS"
-  | "DOWNLOADS"
+  | "TRANSFERS"
   | string; // custom folder id
 
 export type SortField = "date" | "name" | "size";
@@ -33,6 +34,8 @@ export interface SyncStatus {
   currentChannelTitle: string;
 }
 
+export type RemoteSearchStatus = "IDLE" | "LOCAL" | "REMOTE" | "DONE";
+
 interface DriveStoreState {
   // Channels
   channels: ChannelMeta[];
@@ -41,6 +44,7 @@ interface DriveStoreState {
   // Navigation & Filtering
   activeFilter: NavFilter;
   searchQuery: string;
+  remoteSearchStatus: RemoteSearchStatus;
   viewMode: ViewMode;
   sortField: SortField;
   sortOrder: SortOrder;
@@ -112,11 +116,14 @@ function loadLocalFolders(): Record<string, CustomFolder> {
   return {};
 }
 
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+
 export const useDriveStore = create<DriveStoreState>((set, get) => ({
   channels: [],
   activeChannelId: "UNIFIED",
   activeFilter: "ALL",
   searchQuery: "",
+  remoteSearchStatus: "IDLE",
   viewMode: (localStorage.getItem(STORAGE_VIEW_MODE) as ViewMode) || "grid",
   sortField: "date",
   sortOrder: "desc",
@@ -397,7 +404,65 @@ export const useDriveStore = create<DriveStoreState>((set, get) => ({
   },
 
   setActiveFilter: (filter: NavFilter) => set({ activeFilter: filter, renderPage: 1 }),
-  setSearchQuery: (query: string) => set({ searchQuery: query, renderPage: 1 }),
+  setSearchQuery: (query: string) => {
+    set({
+      searchQuery: query,
+      remoteSearchStatus: query.trim() ? "LOCAL" : "IDLE",
+      renderPage: 1,
+    });
+
+    if (!query.trim()) {
+      if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+      set({ remoteSearchStatus: "IDLE" });
+      return;
+    }
+
+    if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+
+    // Trigger Phase 2: Remote MTProto Search after 400ms
+    searchDebounceTimer = setTimeout(async () => {
+      if (!tgStreamClient.client || !tgStreamClient.isConnected) {
+        set({ remoteSearchStatus: "DONE" });
+        return;
+      }
+
+      set({ remoteSearchStatus: "REMOTE" });
+
+      try {
+        const { channels, activeChannelId } = get();
+        const activeChan = activeChannelId !== "UNIFIED"
+          ? channels.find((c) => c.id === activeChannelId)
+          : undefined;
+
+        const remoteFiles = await searchTelegramRemote({
+          client: tgStreamClient.client,
+          query,
+          channel: activeChan,
+          limit: 50,
+        });
+
+        if (remoteFiles.length > 0) {
+          get().appendStreamedFiles(remoteFiles);
+
+          // Group by channel and persist new files to DB
+          const byChannel = new Map<string, DriveFile[]>();
+          for (const f of remoteFiles) {
+            const list = byChannel.get(f.channelId) || [];
+            list.push(f);
+            byChannel.set(f.channelId, list);
+          }
+
+          for (const [chId, cFiles] of byChannel) {
+            await appendChannelFilesBatchToDb(chId, cFiles);
+          }
+        }
+      } catch (err) {
+        console.warn("[Search] Remote search encountered error:", err);
+      } finally {
+        set({ remoteSearchStatus: "DONE" });
+      }
+    }, 400);
+  },
   setViewMode: (mode: ViewMode) => {
     localStorage.setItem(STORAGE_VIEW_MODE, mode);
     set({ viewMode: mode });

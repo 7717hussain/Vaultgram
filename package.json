@@ -18,6 +18,8 @@
     "@radix-ui/react-separator": "^1.1.1",
     "@radix-ui/react-tabs": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.1.6",
+    "@tanstack/react-virtual": "^3.14.9",
+    "@vidstack/react": "^1.12.12",
     "clsx": "^2.1.1",
     "framer-motion": "^11.18.2",
     "idb-keyval": "^6.3.0",
@@ -29,7 +31,7 @@
     "tailwind-merge": "^2.6.0",
     "tailwindcss-animate": "^1.0.7",
     "telegram": "^2.26.22",
-    "vidstack": "^1.12.12",
+    "vidstack": "^0.6.15",
     "zustand": "^5.0.3"
   },
   "devDependencies": {

@@ -1,10 +1,8 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { motion } from "framer-motion";
 import { useChannelWizardStore } from "@/lib/stores/channel-wizard-store";
-import { ChannelItemRow } from "./channel-item-row";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Layers,
   Search,
@@ -12,6 +10,7 @@ import {
   RefreshCw,
   AlertCircle,
   FolderSync,
+  Check,
 } from "lucide-react";
 
 export const ChannelWizard: React.FC = () => {
@@ -151,55 +150,93 @@ export const ChannelWizard: React.FC = () => {
           </div>
         </div>
 
-        {/* Channel List Container */}
-        <div className="rounded-md border border-zinc-800/80 bg-zinc-950/60 overflow-hidden">
-          <ScrollArea className="h-[260px] p-1.5">
-            {isLoading ? (
-              /* Sleek Skeleton Loading Rows */
-              <div className="space-y-1.5 p-1">
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <div
-                    key={i}
-                    className="flex h-12 w-full items-center justify-between px-3 rounded-sm bg-zinc-900/30 border border-zinc-800/30 animate-pulse"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div className="h-7 w-7 rounded-sm bg-zinc-800/60" />
-                      <div className="space-y-1">
-                        <div className="h-3 w-28 rounded-sm bg-zinc-800/60" />
-                        <div className="h-2 w-16 rounded-sm bg-zinc-800/40" />
-                      </div>
+        {/* Scrollable Channel List Container */}
+        <div className="w-full max-h-[360px] overflow-y-auto overflow-x-hidden p-1.5 space-y-1.5 border border-zinc-800/80 bg-zinc-950/80 rounded-sm">
+          {isLoading ? (
+            /* Sleek Skeleton Loading Rows */
+            <div className="space-y-1.5 p-0.5">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div
+                  key={i}
+                  className="flex h-12 w-full items-center justify-between px-4 py-3 rounded-sm bg-zinc-900/30 border border-zinc-800/30 animate-pulse box-border"
+                >
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1 mr-4">
+                    <div className="h-8 w-8 rounded-sm bg-zinc-800/60 shrink-0" />
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="h-3 w-28 rounded-sm bg-zinc-800/60" />
+                      <div className="h-2 w-16 rounded-sm bg-zinc-800/40" />
                     </div>
-                    <div className="h-4 w-4 rounded-[2px] bg-zinc-800/60" />
                   </div>
-                ))}
-              </div>
-            ) : filteredChannels.length === 0 ? (
-              /* Empty State */
-              <div className="flex h-[240px] flex-col items-center justify-center gap-2 text-center p-4 text-zinc-500">
-                <FolderSync className="h-6 w-6 stroke-[1.25px] text-zinc-600" />
-                <span className="text-xs font-medium text-zinc-400">
-                  {searchQuery ? "No channels match your filter" : "No Telegram channels found"}
-                </span>
-                <p className="text-[11px] text-zinc-600 max-w-[200px]">
-                  {searchQuery
-                    ? "Try adjusting your search query"
-                    : "Create or join a channel in Telegram to index files."}
-                </p>
-              </div>
-            ) : (
-              /* Channel Items */
-              <div className="space-y-1">
-                {filteredChannels.map((channel) => (
-                  <ChannelItemRow
-                    key={channel.id}
-                    channel={channel}
-                    isSelected={selectedChannelIds.has(channel.id)}
-                    onToggle={() => toggleChannel(channel.id)}
-                  />
-                ))}
-              </div>
-            )}
-          </ScrollArea>
+                  <div className="h-4 w-4 rounded-sm bg-zinc-800/60 shrink-0" />
+                </div>
+              ))}
+            </div>
+          ) : filteredChannels.length === 0 ? (
+            /* Empty State */
+            <div className="flex h-[240px] flex-col items-center justify-center gap-2 text-center p-4 text-zinc-500">
+              <FolderSync className="h-6 w-6 stroke-[1.25px] text-zinc-600" />
+              <span className="text-xs font-medium text-zinc-400">
+                {searchQuery ? "No channels match your filter" : "No Telegram channels found"}
+              </span>
+              <p className="text-[11px] text-zinc-600 max-w-[200px]">
+                {searchQuery
+                  ? "Try adjusting your search query"
+                  : "Create or join a channel in Telegram to index files."}
+              </p>
+            </div>
+          ) : (
+            filteredChannels.map((channel) => {
+              const isSelected = selectedChannelIds.has(channel.id);
+              const initials =
+                channel.title.trim().split(/\s+/).length >= 2
+                  ? (channel.title.trim().split(/\s+/)[0][0] + channel.title.trim().split(/\s+/)[1][0]).toUpperCase()
+                  : channel.title.slice(0, 2).toUpperCase();
+
+              return (
+                <div
+                  key={channel.id}
+                  onClick={() => toggleChannel(channel.id)}
+                  className={`w-full flex items-center justify-between px-4 py-3 rounded-sm border box-border cursor-pointer transition-colors ${
+                    isSelected
+                      ? "bg-zinc-900/90 border-zinc-700/80 text-zinc-100"
+                      : "bg-zinc-950 border-zinc-800/40 text-zinc-400 hover:bg-zinc-900/40 hover:text-zinc-200"
+                  }`}
+                >
+                  {/* Left Section: Avatar + Channel Info (Truncation-Safe with min-w-0) */}
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1 mr-4">
+                    {/* Avatar / Initials */}
+                    <div className="flex items-center justify-center w-8 h-8 rounded-sm bg-zinc-900 border border-zinc-800 text-xs font-mono font-medium text-zinc-300 shrink-0 select-none">
+                      {initials}
+                    </div>
+
+                    {/* Text Container */}
+                    <div className="flex flex-col min-w-0 flex-1">
+                      <span className="text-xs font-medium text-zinc-200 truncate leading-snug" title={channel.title}>
+                        {channel.title}
+                      </span>
+                      <span className="text-[10px] font-mono text-zinc-500 truncate mt-0.5 leading-none">
+                        {channel.username ? `@${channel.username}` : channel.isSelf ? "Saved Messages" : "Telegram Chat"}
+                        {channel.unreadCount ? ` • ${channel.unreadCount} unread` : ""}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Right Section: Custom Industrial Checkbox */}
+                  <div className="flex items-center justify-center shrink-0">
+                    <div
+                      className={`w-4 h-4 rounded-sm flex items-center justify-center transition-all ${
+                        isSelected
+                          ? "bg-zinc-100 border border-zinc-100 text-zinc-950 shadow-sm"
+                          : "border border-zinc-700/80 bg-zinc-900/60 hover:border-zinc-500"
+                      }`}
+                    >
+                      {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
         </div>
 
         {/* Footer Actions */}

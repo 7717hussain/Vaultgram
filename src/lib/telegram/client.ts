@@ -105,72 +105,89 @@ export class TgStreamClient {
     });
   }
 
+  private initPromise: Promise<boolean> | null = null;
+
   async init(): Promise<boolean> {
-    if (this.client && this.isConnected) return true;
-    if (this.isConnecting) return false;
-
-    const sessionStr = await getSavedSession();
-    if (!sessionStr) {
-      this.isConnected = false;
-      this.isConnecting = false;
-      this.notifyStatus();
-      return false;
+    if (this.client && this.isConnected && this.client.connected) return true;
+    if (this.initPromise) {
+      return this.initPromise;
     }
 
-    const config = await getTgConfig();
-    if (!config.apiId || !config.apiHash) {
-      this.isConnected = false;
-      this.isConnecting = false;
-      this.notifyStatus();
-      return false;
-    }
-
-    this.isConnecting = true;
-    this.notifyStatus();
-
-    try {
-      this.client = this.createClient(sessionStr);
-
-      const connectPromise = this.client.connect();
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error("Telegram MTProto connection timeout")), 8000)
-      );
-
-      await Promise.race([connectPromise, timeoutPromise]);
-
-      if (await this.client.isUserAuthorized()) {
-        const me = await this.client.getMe();
-        this.user = {
-          id: String(me.id || ""),
-          firstName: me.firstName || "",
-          lastName: me.lastName || "",
-          username: me.username || "",
-          phone: me.phone || "",
-        };
-        this.isConnected = true;
-        this.isConnecting = false;
-
-        const currentSession = this.client.session.save();
-        if (currentSession) {
-          await setSavedSession(currentSession);
-          await setSavedUserProfile(this.user);
+    this.initPromise = (async () => {
+      try {
+        const sessionStr = await getSavedSession();
+        if (!sessionStr) {
+          this.isConnected = false;
+          this.isConnecting = false;
+          this.notifyStatus();
+          return false;
         }
 
+        const config = await getTgConfig();
+        if (!config.apiId || !config.apiHash) {
+          this.isConnected = false;
+          this.isConnecting = false;
+          this.notifyStatus();
+          return false;
+        }
+
+        this.isConnecting = true;
         this.notifyStatus();
-        return true;
-      } else {
+
+        if (this.client) {
+          try {
+            await this.client.disconnect();
+          } catch {}
+          this.client = null;
+        }
+
+        this.client = this.createClient(sessionStr);
+
+        const connectPromise = this.client.connect();
+        const timeoutPromise = new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Telegram MTProto connection timeout")), 10000)
+        );
+
+        await Promise.race([connectPromise, timeoutPromise]);
+
+        if (await this.client.isUserAuthorized()) {
+          const me = await this.client.getMe();
+          this.user = {
+            id: String(me.id || ""),
+            firstName: me.firstName || "",
+            lastName: me.lastName || "",
+            username: me.username || "",
+            phone: me.phone || "",
+          };
+          this.isConnected = true;
+          this.isConnecting = false;
+
+          const currentSession = this.client.session.save();
+          if (currentSession) {
+            await setSavedSession(currentSession);
+            await setSavedUserProfile(this.user);
+          }
+
+          this.notifyStatus();
+          return true;
+        } else {
+          this.isConnected = false;
+          this.isConnecting = false;
+          this.notifyStatus();
+          return false;
+        }
+      } catch (err: any) {
+        console.error("[TgStreamClient] Failed to connect TelegramClient:", err);
         this.isConnected = false;
         this.isConnecting = false;
         this.notifyStatus();
         return false;
+      } finally {
+        this.initPromise = null;
       }
-    } catch (err) {
-      console.error("[TgStreamClient] Failed to connect TelegramClient:", err);
-      this.isConnected = false;
-      this.isConnecting = false;
-      this.notifyStatus();
-      return false;
-    }
+    })();
+
+    return this.initPromise;
   }
 
   // 1. High-Speed QR Code Login Flow
@@ -502,6 +519,12 @@ export class TgStreamClient {
           const waitSec = parseInt(msg.match(/FLOOD_WAIT_(\d+)/)?.[1] || "5", 10);
           console.warn(`[getUserChannels] Flood wait: waiting ${waitSec}s...`);
           await new Promise((r) => setTimeout(r, waitSec * 1000));
+          continue;
+        }
+        if (msg.includes("AUTH_KEY_DUPLICATED")) {
+          console.warn("[getUserChannels] AUTH_KEY_DUPLICATED detected. Reconnecting singleton client...");
+          this.isConnected = false;
+          await this.init();
           continue;
         }
         if (attempt === 2) throw err;

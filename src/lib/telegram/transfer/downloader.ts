@@ -2,7 +2,7 @@ import { TelegramClient, Api } from "telegram";
 import bigInt from "big-integer";
 import { tgStreamClient } from "../client";
 import { useTransferStore, TransferTask } from "../../stores/transfer-store";
-import { formatBytes } from "../../utils";
+import { formatSpeed } from "../../utils";
 import { toast } from "sonner";
 
 // Strictly 4KB-aligned chunk size required by Telegram MTProto GetFile RPC
@@ -209,7 +209,7 @@ export async function downloadDriveFile({
         const deltaSec = (now - lastTime) / 1000;
         const deltaBytes = downloadedBytes - lastBytes;
         const bytesPerSec = deltaSec > 0 ? deltaBytes / deltaSec : 0;
-        const speedStr = `${formatBytes(bytesPerSec)}/s`;
+        const speedStr = formatSpeed(bytesPerSec);
         const remaining = Math.max(0, fileSize - downloadedBytes);
         const remainingSec = bytesPerSec > 0 ? Math.round(remaining / bytesPerSec) : 0;
         const etaStr =

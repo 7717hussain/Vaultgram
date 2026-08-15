@@ -28,18 +28,18 @@ export const ChannelItemRow: React.FC<ChannelItemRowProps> = ({
     <div
       onClick={onToggle}
       className={cn(
-        "group flex h-12 w-full cursor-pointer items-center justify-between px-3 rounded-sm transition-all select-none",
+        "group flex h-12 w-full cursor-pointer items-center justify-between px-3.5 py-2.5 rounded-sm transition-all select-none",
         isSelected
-          ? "bg-zinc-900/80 border border-zinc-700/60"
-          : "bg-transparent border border-transparent hover:bg-zinc-800/40 hover:border-zinc-800/50"
+          ? "bg-zinc-900/90 border border-zinc-700/80 text-zinc-100"
+          : "bg-zinc-950/60 border border-zinc-800/40 text-zinc-400 hover:bg-zinc-900/40 hover:text-zinc-200"
       )}
     >
       {/* Left: Avatar + Title & Meta */}
-      <div className="flex items-center gap-2.5 overflow-hidden min-w-0 pr-2">
+      <div className="flex items-center gap-3 overflow-hidden min-w-0 pr-3">
         {/* Avatar */}
         <div
           className={cn(
-            "flex h-7 w-7 shrink-0 items-center justify-center rounded-sm text-[11px] font-mono font-medium border",
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-sm text-xs font-mono font-medium border",
             channel.isSelf
               ? "bg-zinc-800 border-zinc-700 text-zinc-100"
               : isSelected
@@ -83,16 +83,18 @@ export const ChannelItemRow: React.FC<ChannelItemRowProps> = ({
         </div>
       </div>
 
-      {/* Right: Sharp Minimalist Checkbox */}
-      <div
-        className={cn(
-          "flex h-4 w-4 shrink-0 items-center justify-center rounded-[2px] border transition-all",
-          isSelected
-            ? "bg-zinc-100 border-zinc-100 text-zinc-950 shadow-sm"
-            : "border-zinc-700 bg-zinc-950/80 group-hover:border-zinc-500"
-        )}
-      >
-        {isSelected && <Check className="h-3 w-3 stroke-[2.5px]" />}
+      {/* Right: Sharp Minimalist Checkbox with ample breathing room from scrollbar */}
+      <div className="flex items-center justify-center shrink-0 pl-2 pr-1">
+        <div
+          className={cn(
+            "flex h-4 w-4 items-center justify-center rounded-[2px] border transition-all",
+            isSelected
+              ? "bg-zinc-100 border-zinc-100 text-zinc-950 shadow-sm"
+              : "border-zinc-700 bg-zinc-950/80 group-hover:border-zinc-500"
+          )}
+        >
+          {isSelected && <Check className="h-3 w-3 stroke-[2.5px]" />}
+        </div>
       </div>
     </div>
   );
