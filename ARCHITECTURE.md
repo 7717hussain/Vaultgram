@@ -43,6 +43,12 @@ This document is an engineering reference for the core subsystems, data pipeline
 │  │ - 4-Worker MTProto Upload (`CustomFile` stream)  │  │
 │  │ - 4-Worker MTProto Download (`GetFile` chunks)   │  │
 │  └──────────────────────────────────────────────────┘  │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │ Pure-Browser MTProto + MSE Streaming Pipeline    │  │
+│  │ - TelegramRangeReader (MTProto upload.getFile)   │  │
+│  │ - Mp4DemuxSegmenter (ISO-BMFF Box parsing)       │  │
+│  │ - MseStreamController (MediaSource/SourceBuffer) │  │
+│  └──────────────────────────────────────────────────┘  │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -103,6 +109,25 @@ This document is an engineering reference for the core subsystems, data pipeline
 - **Order Preservation:** Chunks are saved to pre-allocated `orderedChunks[jobIndex]` array.
 - **Lifecycle Boundary:** Task remains `ACTIVE` throughout download, chunk verification, and Blob construction. Transitions to `COMPLETED` and shows toast **only after `link.click()` executes**.
 - **Memory Cleanup:** Guaranteed URL revocation (`URL.revokeObjectURL(blobUrl)`) in `finally` block after a 10-second grace window.
+
+---
+
+### F. Pure-Browser MTProto + MSE Streaming Pipeline
+- **Entry Point:** [`src/lib/streaming/mse-stream-controller.ts`](file:///home/hussain/Frontend%20JEE/src/lib/streaming/mse-stream-controller.ts) / [`src/components/drive/video-player-modal.tsx`](file:///home/hussain/Frontend%20JEE/src/components/drive/video-player-modal.tsx)
+- **Architecture:** Zero backend, zero background daemons, zero localhost proxies. Pure browser MTProto WebSocket requests directly to Telegram DCs coupled with client-side media segmentation and MediaSource extensions.
+- **Transport Subsystem (`TelegramRangeReader`):**
+  - Sends direct `Api.upload.GetFile` MTProto requests with 4KB alignment and multi-DC connection pooling.
+  - Transparently recovers from `FILE_REFERENCE_EXPIRED` by re-fetching the parent channel message.
+  - Automatically handles `FLOOD_WAIT` cooldowns without dropping existing buffered media.
+- **Demux & Segmentation Subsystem (`Mp4DemuxSegmenter`):**
+  - Parses ISO-BMFF box structure (`ftyp`, `moov`, `mdat`) in JavaScript using `mp4box.js`.
+  - Performs fast-start header discovery (probing head 0-2MB, then tail if `moov` is placed at end of file).
+  - Emits MSE initialization segments and fragments continuous sample streams into valid `moof` + `mdat` chunks.
+- **MSE Orchestration (`MseStreamController`):**
+  - Serialized SourceBuffer append queue governed by `updateend` events.
+  - Dynamic forward-buffering backpressure window (target: 20-30s).
+  - Keyframe sync seeking via `mp4box.seek(time, true)` to fetch only necessary byte ranges from Telegram.
+  - Real-time diagnostic telemetry HUD (Throughput MB/s, Active Reqs, Buffer seconds, Rebuffer count).
 
 ---
 

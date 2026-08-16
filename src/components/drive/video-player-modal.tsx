@@ -20,10 +20,6 @@ import { DriveFile } from "@/lib/telegram/indexer";
 import { useTransferStore } from "@/lib/stores/transfer-store";
 import { useDriveStore } from "@/lib/stores/drive-store";
 import { formatBytes, formatDate } from "@/lib/utils";
-import { getSavedSession } from "@/lib/telegram/session";
-import { tgStreamClient } from "@/lib/telegram/client";
-import { rehydrateFileLocation } from "@/lib/telegram/utils/rehydrate-media";
-import { refreshFileLocation } from "@/lib/telegram/media-refresher";
 
 interface VideoPlayerModalProps {
   file: DriveFile | null;
@@ -61,115 +57,8 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
   const [isSpeedMenuOpen, setIsSpeedMenuOpen] = useState(false);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
-  const [streamError, setStreamError] = useState<string | null>(null);
-  const [retryKey, setRetryKey] = useState(0);
-  const [sessionString, setSessionString] = useState<string>("");
-  const [liveLocation, setLiveLocation] = useState<any>(null);
-
-  // Reset live location when file changes
-  useEffect(() => {
-    setLiveLocation(null);
-  }, [file?.id]);
-
-  // Retrieve active session string for local daemon proxy
-  useEffect(() => {
-    if (!isOpen) return;
-    getSavedSession().then((saved) => {
-      const activeSession = saved || (tgStreamClient.client?.session ? (tgStreamClient.client.session as any).save?.() : "") || "";
-      setSessionString(activeSession);
-    });
-  }, [isOpen]);
-
-  // If accessHash or fileReference is missing from initial index, auto-fetch from Telegram
-  useEffect(() => {
-    if (!isOpen || !activeFile) return;
-
-    let needsRefresh = false;
-    try {
-      const loc = liveLocation || (rehydrateFileLocation(activeFile) as any);
-      if (!loc || !loc.accessHash || loc.accessHash.toString() === "0" || !loc.fileReference || loc.fileReference.length === 0) {
-        needsRefresh = true;
-      }
-    } catch (_) {
-      needsRefresh = true;
-    }
-
-    if (needsRefresh && tgStreamClient.client) {
-      console.log("[VideoPlayer] Auto-refreshing media location from Telegram for:", activeFile.name);
-      refreshFileLocation(tgStreamClient.client, activeFile)
-        .then((res) => {
-          if (res?.location) {
-            setLiveLocation(res.location);
-          }
-        })
-        .catch((err) => {
-          console.warn("[VideoPlayer] Location refresh failed:", err);
-        });
-    }
-  }, [isOpen, activeFile?.id]);
-
-  // Construct local daemon stream URL
-  const getDaemonStreamUrl = useCallback(() => {
-    if (!activeFile) return "";
-
-    const activeSession =
-      sessionString ||
-      localStorage.getItem("vaultgram_session_string") ||
-      localStorage.getItem("vaultgram_session") ||
-      localStorage.getItem("telegram_session") ||
-      (tgStreamClient.client?.session ? (tgStreamClient.client.session as any).save?.() : "") ||
-      "";
-
-    if (!activeSession) return "";
-
-    let loc: any = liveLocation;
-    if (!loc || !loc.id) {
-      try {
-        loc = rehydrateFileLocation(activeFile);
-      } catch (err) {
-        console.error("🚨 [VideoPlayer] Failed to rehydrate file location:", err);
-      }
-    }
-
-    const fileId = loc?.id ? loc.id.toString() : (activeFile.location?.id || activeFile.id);
-    const accessHash = loc?.accessHash ? loc.accessHash.toString() : (activeFile.location?.accessHash || activeFile.accessHash || "");
-    const dcId = loc?.dcId || activeFile.dcId || 2;
-
-    const rawFileRef = loc?.fileReference || activeFile.location?.fileReference || activeFile.fileReference;
-    let fileRefBase64 = "";
-
-    if (rawFileRef) {
-      if (typeof rawFileRef === "string") {
-        fileRefBase64 = rawFileRef;
-      } else if (typeof Buffer !== "undefined" && Buffer.isBuffer(rawFileRef)) {
-        fileRefBase64 = rawFileRef.toString("base64");
-      } else if (rawFileRef instanceof Uint8Array || Array.isArray(rawFileRef)) {
-        fileRefBase64 = Buffer.from(rawFileRef).toString("base64");
-      } else if (typeof rawFileRef === "object") {
-        fileRefBase64 = Buffer.from(Object.values(rawFileRef)).toString("base64");
-      }
-    }
-
-    if (!accessHash || accessHash === "0" || !fileRefBase64) {
-      // Hold stream URL until media hashes are confirmed or refreshed
-      return "";
-    }
-
-    const params = new URLSearchParams({
-      session: activeSession,
-      dcId: String(dcId),
-      id: String(fileId),
-      accessHash: String(accessHash),
-      fileReference: fileRefBase64,
-      size: String(activeFile.size),
-      mimeType: activeFile.mimeType || "video/mp4",
-      channelId: String(activeFile.channelId || ""),
-      msgId: String(activeFile.messageId || (activeFile as any).msgId || ""),
-      ...(retryKey ? { r: String(retryKey) } : {}),
-    });
-
-    return `http://localhost:4000/stream?${params.toString()}`;
-  }, [activeFile, sessionString, retryKey, liveLocation]);
+  const [hasError, setHasError] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   // Cinema Auto-Hide Controller
   const resetHideTimer = useCallback(() => {
@@ -191,33 +80,6 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
   }, []);
 
-  // Initialize and reset playback states
-  useEffect(() => {
-    if (!isOpen || !file) {
-      setDuration(0);
-      setCurrentTime(0);
-      setBufferedEnd(0);
-      setIsPlaying(false);
-      setIsBuffering(false);
-      setStreamError(null);
-      return;
-    }
-
-    setStreamError(null);
-    setIsBuffering(true);
-
-    return () => {
-      if (videoRef.current) {
-        try {
-          videoRef.current.pause();
-          videoRef.current.removeAttribute("src");
-          videoRef.current.load();
-        } catch (_) {}
-      }
-    };
-  }, [file?.id, isOpen, retryKey]);
-
-  // Global keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
@@ -261,10 +123,23 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     }
   }, [isSpeedMenuOpen]);
 
-  if (!isOpen || !file) return null;
+  // Reset states on file change
+  useEffect(() => {
+    if (isOpen) {
+      setIsBuffering(true);
+      setHasError(false);
+      setCurrentTime(0);
+      setDuration(0);
+      setBufferedEnd(0);
+    }
+  }, [isOpen, activeFile?.id, retryCount]);
+
+  if (!isOpen || !activeFile) return null;
+
+  const streamUrl = `/stream/${activeFile.id}${retryCount > 0 ? `?r=${retryCount}` : ""}`;
 
   const togglePlay = () => {
-    if (!videoRef.current || streamError) return;
+    if (!videoRef.current) return;
     if (videoRef.current.paused) {
       videoRef.current.play().catch(() => {});
       setIsPlaying(true);
@@ -273,14 +148,16 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
       setIsPlaying(false);
       setShowControls(true);
     }
+    resetHideTimer();
   };
 
   const seekRelative = (seconds: number) => {
-    if (!videoRef.current || duration === 0) return;
+    if (!videoRef.current) return;
     videoRef.current.currentTime = Math.max(
       0,
-      Math.min(duration, videoRef.current.currentTime + seconds)
+      Math.min(duration || 1, videoRef.current.currentTime + seconds)
     );
+    resetHideTimer();
   };
 
   const toggleFullscreen = async () => {
@@ -333,6 +210,14 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     }
   };
 
+  const handleLoadedMetadata = () => {
+    if (!videoRef.current) return;
+    setDuration(videoRef.current.duration);
+    setIsBuffering(false);
+    videoRef.current.play().catch(() => {});
+    setIsPlaying(true);
+  };
+
   const handleScrubberClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!scrubberRef.current || !videoRef.current || duration === 0) return;
     const rect = scrubberRef.current.getBoundingClientRect();
@@ -340,6 +225,7 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
     const target = pos * duration;
     videoRef.current.currentTime = target;
     setCurrentTime(target);
+    resetHideTimer();
   };
 
   const handleScrubberMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -370,17 +256,16 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
   };
 
   const handleDownload = () => {
-    enqueueDownload(file);
+    enqueueDownload(activeFile);
     onClose();
   };
 
   const retryStream = () => {
-    setStreamError(null);
+    setHasError(false);
     setIsBuffering(true);
-    setRetryKey((k) => k + 1);
+    setRetryCount((c) => c + 1);
   };
 
-  const streamUrl = getDaemonStreamUrl();
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufferedPercent = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
 
@@ -394,40 +279,38 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
       } ${!showControls && isPlaying ? "cursor-none" : "cursor-default"}`}
     >
       <div
-        className={`relative flex flex-col w-full bg-zinc-950 overflow-hidden ${
-          isFullscreen
-            ? "h-full w-full rounded-none"
-            : "max-w-5xl rounded-md border border-zinc-800/80 shadow-2xl"
+        className={`relative flex flex-col bg-zinc-950 border border-zinc-800 shadow-2xl rounded-sm overflow-hidden ${
+          isFullscreen ? "w-full h-full rounded-none border-none" : "w-full max-w-5xl max-h-[90vh]"
         }`}
       >
-        {/* Top Header: Floating Left Pill & Right Merged Pill */}
+        {/* Floating Top Header Bar */}
         <div
-          className={`absolute top-4 inset-x-4 z-30 flex items-center justify-between pointer-events-none transition-opacity duration-300 ${
-            showControls ? "opacity-100" : "opacity-0"
+          className={`absolute top-0 inset-x-0 z-30 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/80 via-black/40 to-transparent transition-opacity duration-300 ${
+            showControls ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
         >
-          {/* Left Floating Header Pill: Title & Telemetry */}
-          <div className="pointer-events-auto bg-zinc-950/85 backdrop-blur-md border border-zinc-800/80 rounded-sm px-3 py-1.5 flex items-center gap-2.5 max-w-[70%] shadow-xl">
-            <VideoIcon className="w-4 h-4 text-zinc-400 shrink-0" />
-            <div className="flex flex-col min-w-0">
-              <span className="text-xs font-semibold text-zinc-100 truncate" title={file.name}>
-                {file.name}
-              </span>
-              <div className="flex items-center gap-1.5 text-[10px] font-mono text-zinc-400">
-                <span>{file.channelTitle}</span>
+          <div className="flex items-center gap-3 min-w-0 pr-4">
+            <div className="p-1.5 bg-zinc-900/90 border border-zinc-800 rounded-sm text-zinc-400">
+              <VideoIcon className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-xs font-semibold text-zinc-100 truncate tracking-tight font-sans">
+                {activeFile.name}
+              </h2>
+              <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-mono">
+                <span>{activeFile.channelTitle}</span>
                 <span>•</span>
-                <span>{formatBytes(file.size)}</span>
+                <span>{formatBytes(activeFile.size)}</span>
                 <span>•</span>
-                <span>{formatDate(file.date)}</span>
+                <span>{formatDate(activeFile.date)}</span>
               </div>
             </div>
           </div>
 
-          {/* Right Floating Header Pill: Merged Download + Close Button */}
-          <div className="pointer-events-auto bg-zinc-950/85 backdrop-blur-md border border-zinc-800/80 rounded-sm p-1 flex items-center gap-1 shadow-xl">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={handleDownload}
-              className="h-7 px-2.5 text-xs font-medium bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 rounded-sm text-zinc-200 flex items-center gap-1.5 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-zinc-200 bg-zinc-900/90 hover:bg-zinc-800 border border-zinc-800 rounded-sm transition-colors"
             >
               <Download className="w-3.5 h-3.5" />
               <span>Download</span>
@@ -446,40 +329,37 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
           className="relative w-full h-full aspect-video bg-black flex items-center justify-center overflow-hidden cursor-pointer"
           onClick={togglePlay}
         >
-          {/* YouTube-Style Live Buffering Overlay */}
-          {isBuffering && !streamError && (
+          {/* Live Buffering Spinner */}
+          {isBuffering && !hasError && (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 z-20 gap-2 select-none pointer-events-none">
               <Loader2 className="w-9 h-9 text-zinc-200 animate-spin stroke-[1.5px]" />
               <span className="text-[11px] font-mono text-zinc-300 tracking-wider">
-                STREAMING LIVE
+                STREAMING VIA MTPROTO
               </span>
             </div>
           )}
 
           {/* Stream Connection Error State */}
-          {streamError && (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 z-20 gap-3 p-6 text-center select-none">
+          {hasError && (
+            <div
+              className="absolute inset-0 flex flex-col items-center justify-center bg-black/95 z-20 gap-3 p-6 text-center select-none"
+              onClick={(e) => e.stopPropagation()}
+            >
               <AlertCircle className="w-10 h-10 text-rose-400 stroke-[1.5px]" />
-              <span className="text-sm font-semibold text-zinc-200">Stream Connection Interrupted</span>
+              <span className="text-sm font-semibold text-zinc-200">Stream Playback Error</span>
               <p className="text-xs text-zinc-400 max-w-md font-mono bg-zinc-900/80 p-2.5 rounded-sm border border-zinc-800">
-                {streamError}
+                Failed to load video stream from Telegram.
               </p>
               <div className="flex items-center gap-2 mt-2">
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    retryStream();
-                  }}
+                  onClick={retryStream}
                   className="px-3 py-1.5 text-xs font-medium bg-zinc-800 hover:bg-zinc-700 text-white rounded-sm flex items-center gap-1.5 transition-colors border border-zinc-700"
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>Retry Stream</span>
                 </button>
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleDownload();
-                  }}
+                  onClick={handleDownload}
                   className="px-3 py-1.5 text-xs font-medium bg-zinc-900 hover:bg-zinc-800 text-zinc-300 rounded-sm flex items-center gap-1.5 transition-colors border border-zinc-800"
                 >
                   <Download className="w-3.5 h-3.5" />
@@ -491,30 +371,19 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
 
           <video
             ref={videoRef}
-            src={streamUrl || undefined}
+            src={streamUrl}
             className="w-full h-full object-contain cursor-pointer"
             onTimeUpdate={handleTimeUpdate}
-            onLoadedMetadata={() => {
-              if (videoRef.current) {
-                setDuration(videoRef.current.duration);
-                setIsBuffering(false);
-                videoRef.current.play().catch(() => {});
-              }
-            }}
+            onLoadedMetadata={handleLoadedMetadata}
             onWaiting={() => setIsBuffering(true)}
             onPlaying={() => {
-              setIsPlaying(true);
               setIsBuffering(false);
+              setIsPlaying(true);
             }}
             onPause={() => setIsPlaying(false)}
             onError={() => {
-              const err = videoRef.current?.error;
-              console.error("[VideoTag Error]:", {
-                code: err?.code,
-                message: err?.message,
-              });
-              setStreamError("Unable to stream chunk from Telegram Daemon.");
               setIsBuffering(false);
+              setHasError(true);
             }}
             autoPlay
             playsInline
@@ -523,144 +392,138 @@ export const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({
 
         {/* Bottom Control Layer (Naked Standalone Seekbar + Clustered Control Pods) */}
         <div
-          className={`absolute bottom-4 inset-x-4 z-30 flex flex-col gap-3 transition-opacity duration-300 ${
-            showControls ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          className={`absolute bottom-0 inset-x-0 z-30 px-4 py-3 bg-gradient-to-t from-black/90 via-black/50 to-transparent transition-opacity duration-300 ${
+            showControls ? "opacity-100" : "opacity-0 pointer-events-none"
           }`}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* 1. Naked Standalone Seekbar */}
+          {/* Naked Precision Scrubber Track */}
           <div
             ref={scrubberRef}
             onClick={handleScrubberClick}
             onMouseMove={handleScrubberMouseMove}
             onMouseLeave={() => setHoverTime(null)}
-            className="group/track relative w-full h-3 flex items-center cursor-pointer select-none px-0.5"
+            className="relative w-full h-2 flex items-center cursor-pointer group mb-2 select-none"
           >
-            {/* Hover Tooltip */}
+            {/* Background Rail */}
+            <div className="w-full h-[3px] group-hover:h-[5px] bg-zinc-800/80 rounded-full transition-all duration-150 relative overflow-hidden">
+              {/* Buffered Range Bar */}
+              <div
+                className="absolute top-0 bottom-0 left-0 bg-zinc-700/60 transition-all duration-200"
+                style={{ width: `${bufferedPercent}%` }}
+              />
+              {/* Playback Progress Bar */}
+              <div
+                className="absolute top-0 bottom-0 left-0 bg-zinc-200"
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+
+            {/* Hover Timestamp Tooltip */}
             {hoverTime !== null && (
               <div
-                className="absolute -top-7 transform -translate-x-1/2 px-1.5 py-0.5 bg-zinc-900 border border-zinc-700/80 rounded-sm text-[10px] font-mono text-zinc-200 shadow-xl pointer-events-none"
+                className="absolute bottom-4 -translate-x-1/2 px-1.5 py-0.5 bg-zinc-900/95 border border-zinc-800 rounded-sm text-[10px] font-mono text-zinc-200 shadow-md pointer-events-none select-none"
                 style={{ left: `${hoverPosition}px` }}
               >
                 {formatTime(hoverTime)}
               </div>
             )}
 
-            {/* Scrubber Background Bar */}
-            <div className="w-full h-1 group-hover/track:h-1.5 bg-zinc-800/90 rounded-sm overflow-hidden relative transition-all">
-              {/* Buffered Progress */}
-              <div
-                className="absolute top-0 bottom-0 left-0 bg-zinc-700/50 rounded-sm"
-                style={{ width: `${bufferedPercent}%` }}
-              />
-              {/* Playback Progress */}
-              <div
-                className="absolute top-0 bottom-0 left-0 bg-zinc-100 rounded-sm"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-
-            {/* Seekbar Playhead Dot (Thumb) */}
+            {/* Scrubber Playhead Knob */}
             <div
-              className="absolute top-1/2 w-3 h-3 bg-white rounded-full shadow-md transition-transform group-hover/track:scale-125 pointer-events-none"
-              style={{ left: `${progressPercent}%`, transform: "translate(-50%, -50%)" }}
+              className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 bg-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md pointer-events-none"
+              style={{ left: `${progressPercent}%` }}
             />
           </div>
 
-          {/* 2. Clustered Control Pods (Floating Modular Pills) */}
-          <div className="flex items-center justify-between text-zinc-200 select-none">
-            {/* Left Pod: Playback & Timestamps */}
-            <div className="bg-zinc-950/85 backdrop-blur-md border border-zinc-800/80 rounded-sm px-2.5 py-1.5 flex items-center gap-3 shadow-xl">
+          {/* Pod Controls Row */}
+          <div className="flex items-center justify-between">
+            {/* Left Control Cluster */}
+            <div className="flex items-center gap-3">
               <button
-                type="button"
                 onClick={togglePlay}
-                className="hover:text-white transition-colors focus:outline-none"
+                className="p-1.5 hover:bg-zinc-800 text-zinc-200 rounded-sm transition-colors"
               >
                 {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 fill-current" />}
               </button>
 
-              <span className="font-mono text-xs text-zinc-300">
-                {formatTime(currentTime)} <span className="text-zinc-500">/</span> {formatTime(duration)}
-              </span>
-            </div>
-
-            {/* Right Pod: Audio, Speed, PiP, & Fullscreen */}
-            <div className="bg-zinc-950/85 backdrop-blur-md border border-zinc-800/80 rounded-sm px-2.5 py-1.5 flex items-center gap-3 shadow-xl">
-              {/* Volume Scrubber with Smooth Hover Expansion */}
-              <div className="group/vol flex items-center gap-2">
+              {/* Volume / Mute Pod */}
+              <div className="flex items-center gap-1.5 group/vol">
                 <button
-                  type="button"
                   onClick={toggleMute}
-                  className="hover:text-white transition-colors focus:outline-none"
+                  className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-sm transition-colors"
                 >
-                  {isMuted || volume === 0 ? (
-                    <VolumeX className="w-4 h-4 text-zinc-400" />
-                  ) : (
-                    <Volume2 className="w-4 h-4" />
-                  )}
+                  {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
                 </button>
 
                 <div
                   ref={volumeTrackRef}
                   onClick={handleVolumeTrackClick}
-                  className="w-0 group-hover/vol:w-16 h-1 bg-zinc-800 rounded-sm overflow-hidden cursor-pointer relative transition-all duration-200"
+                  className="w-16 h-4 flex items-center cursor-pointer select-none"
                 >
-                  <div
-                    className="h-full bg-zinc-200 rounded-sm"
-                    style={{ width: `${isMuted ? 0 : volume * 100}%` }}
-                  />
+                  <div className="w-full h-1 bg-zinc-800 rounded-full relative overflow-hidden">
+                    <div
+                      className="absolute inset-y-0 left-0 bg-zinc-300 rounded-full"
+                      style={{ width: `${isMuted ? 0 : volume * 100}%` }}
+                    />
+                  </div>
                 </div>
               </div>
 
-              {/* Custom Monochromatic Speed Popover */}
+              {/* Monospace Timestamp */}
+              <div className="text-[11px] font-mono text-zinc-400 select-none">
+                <span className="text-zinc-200">{formatTime(currentTime)}</span>
+                <span className="mx-1">/</span>
+                <span>{formatTime(duration)}</span>
+              </div>
+            </div>
+
+            {/* Right Control Cluster */}
+            <div className="flex items-center gap-2">
+              {/* Playback Speed Popover */}
               <div className="relative">
                 <button
-                  type="button"
-                  onClick={() => setIsSpeedMenuOpen(!isSpeedMenuOpen)}
-                  className="px-2 py-0.5 rounded-sm bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-[11px] font-mono text-zinc-300 flex items-center gap-1 transition-colors focus:outline-none"
+                  onClick={() => setIsSpeedMenuOpen((prev) => !prev)}
+                  className="flex items-center gap-0.5 px-2 py-1 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-sm text-[11px] font-mono transition-colors border border-transparent hover:border-zinc-800"
                 >
                   <span>{playbackRate}x</span>
-                  <ChevronUp className={`w-3 h-3 transition-transform ${isSpeedMenuOpen ? "rotate-180" : ""}`} />
+                  <ChevronUp className="w-3 h-3" />
                 </button>
 
                 {isSpeedMenuOpen && (
-                  <div className="absolute bottom-full right-0 mb-2 w-24 bg-zinc-950 border border-zinc-800 rounded-sm shadow-2xl py-1 z-50 animate-in fade-in-0 zoom-in-95 duration-100">
-                    <div className="px-2 py-1 text-[10px] font-mono text-zinc-400 border-b border-zinc-800/80 uppercase tracking-wider">
-                      Speed
-                    </div>
-                    {SPEED_OPTIONS.map((rate) => (
+                  <div className="absolute bottom-full right-0 mb-2 py-1 w-20 bg-zinc-900 border border-zinc-800 rounded-sm shadow-xl z-50 flex flex-col">
+                    {SPEED_OPTIONS.map((speed) => (
                       <button
-                        key={rate}
-                        type="button"
-                        onClick={() => setSpeed(rate)}
-                        className={`w-full px-2 py-1 text-xs font-mono flex items-center justify-between hover:bg-zinc-900 transition-colors ${
-                          playbackRate === rate ? "text-zinc-100 font-semibold bg-zinc-900/60" : "text-zinc-400"
+                        key={speed}
+                        onClick={() => setSpeed(speed)}
+                        className={`flex items-center justify-between px-2.5 py-1 text-[10px] font-mono transition-colors text-left ${
+                          playbackRate === speed
+                            ? "bg-zinc-800 text-zinc-100 font-semibold"
+                            : "text-zinc-400 hover:bg-zinc-800/60 hover:text-zinc-200"
                         }`}
                       >
-                        <span>{rate}x</span>
-                        {playbackRate === rate && <Check className="w-3 h-3 text-zinc-100" />}
+                        <span>{speed}x</span>
+                        {playbackRate === speed && <Check className="w-3 h-3 text-emerald-400" />}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* PiP Button */}
+              {/* Picture in Picture */}
               <button
-                type="button"
                 onClick={togglePiP}
-                className="hover:text-white transition-colors focus:outline-none"
-                title="Picture-in-Picture"
+                className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-sm transition-colors"
+                title="Picture in Picture"
               >
                 <PictureInPicture2 className="w-4 h-4" />
               </button>
 
-              {/* Fullscreen Button */}
+              {/* Fullscreen */}
               <button
-                type="button"
                 onClick={toggleFullscreen}
-                className="hover:text-white transition-colors focus:outline-none"
-                title="Fullscreen (F)"
+                className="p-1.5 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 rounded-sm transition-colors"
+                title={isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
               >
                 {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
               </button>

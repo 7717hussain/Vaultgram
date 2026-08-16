@@ -50,3 +50,10 @@ This log records significant, durable architectural and engineering decisions ma
 - **Context:** Sequential single-worker chunking resulted in low throughput (~40 KB/s for video, ~300 KB/s for docs).
 - **Decision:** Implement a bounded 4-worker parallel pool querying 512 KB chunks via `Api.upload.GetFile` with index-based array assembly (`orderedChunks[jobIndex]`), followed by typed `Blob` construction and delayed URL revocation (Architecture B).
 - **Consequences:** Drastically increases download throughput to the network/DC limit while maintaining byte order and memory safety.
+
+---
+
+## ADR-008: Pure Client-Side MTProto + MSE Streaming (Zero Backend / Zero Daemon)
+- **Context:** A temporary local Node.js Express daemon (`http://localhost:4000`) was tested as a fallback proxy for video streaming. However, this violated Vaultgram's core architectural principle of zero backend and prevented deploying as a static SPA on Cloudflare Pages.
+- **Decision:** Permanently replace the daemon with a pure-browser streaming architecture: (1) `TelegramRangeReader` directly requesting MTProto byte chunks over WebSockets via GramJS `upload.GetFile`, (2) `Mp4DemuxSegmenter` performing browser-side ISO-BMFF box parsing with fast-start `moov` probing and on-the-fly sample segmentation into `moof`+`mdat` chunks, (3) `MseStreamController` feeding native `MediaSource` and `SourceBuffer` with serialized queueing, backpressure control, and random keyframe seeking.
+- **Consequences:** Enables zero-backend video playback in static SPA environments with bounded memory usage, eliminating the need for any local proxy service or intermediary server.
