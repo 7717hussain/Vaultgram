@@ -171,27 +171,38 @@ export class TelegramSyncStore {
       let remoteConfig: VaultgramCloudConfig | null = null;
 
       try {
-        const full: any = await client.invoke(
-          new Api.channels.GetFullChannel({ channel: targetChannel })
-        );
-        const pinnedMsgId = full?.fullChat?.pinnedMsgId || cachedMsgId;
+        let pinnedMsgId = cachedMsgId;
+        if (!pinnedMsgId) {
+          const full: any = await client.invoke(
+            new Api.channels.GetFullChannel({ channel: targetChannel })
+          );
+          pinnedMsgId = full?.fullChat?.pinnedMsgId;
+        }
 
         if (pinnedMsgId) {
           const messages: any = await client.getMessages(targetChannel, {
             ids: [pinnedMsgId],
           });
 
-          if (messages && messages[0] && messages[0].message) {
             const rawText = messages[0].message;
+            let jsonStr = "";
             if (rawText.includes("```json")) {
-              const jsonStr = rawText.split("```json")[1].split("```")[0].trim();
-              remoteConfig = JSON.parse(jsonStr);
+              jsonStr = rawText.split("```json")[1].split("```")[0].trim();
+            } else if (rawText.includes("{")) {
+              const startIdx = rawText.indexOf("{");
+              const endIdx = rawText.lastIndexOf("}");
+              if (startIdx !== -1 && endIdx !== -1 && endIdx > startIdx) {
+                jsonStr = rawText.slice(startIdx, endIdx + 1);
+              }
             } else {
-              remoteConfig = JSON.parse(rawText);
+              jsonStr = rawText.trim();
             }
-            this.configMessageId = pinnedMsgId;
-            await set(KEY_CONFIG_MESSAGE_ID, pinnedMsgId);
-          }
+
+            if (jsonStr) {
+              remoteConfig = JSON.parse(jsonStr);
+              this.configMessageId = pinnedMsgId;
+              await set(KEY_CONFIG_MESSAGE_ID, pinnedMsgId);
+            }
         }
       } catch (err) {
         console.warn("[Sync] Non-fatal notice reading pinned config message:", err);

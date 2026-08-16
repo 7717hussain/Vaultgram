@@ -18,35 +18,33 @@ import {
   ChannelMeta,
 } from "./session";
 
-// Official Telegram WebSocket Gateways for all 5 DCs
-const DC_WEBSOCKET_DOMAINS: Record<number, string> = {
-  1: "pluto.web.telegram.org",
-  2: "venus.web.telegram.org",
-  3: "aurora.web.telegram.org",
-  4: "vesta.web.telegram.org",
-  5: "flora.web.telegram.org",
-};
-
 export class TelegramBrowserWebSocket extends PromisedWebSockets {
   getWebSocketLink(ip: string, _port: number, testServers?: boolean) {
-    for (const [dc, domain] of Object.entries(DC_WEBSOCKET_DOMAINS)) {
-      if (ip.includes(domain) || String(ip) === String(dc)) {
-        return `wss://${domain}/apiws${testServers ? "_test" : ""}`;
-      }
+    const testSuffix = testServers ? "_test" : "";
+
+    // 1. If GramJS passed a full Telegram domain (e.g. pluto-1.web.telegram.org, flora-1.web.telegram.org), USE IT DIRECTLY!
+    if (ip.includes("web.telegram.org") || ip.includes("telegram.org")) {
+      return `wss://${ip}/apiws${testSuffix}`;
     }
-    if (ip.includes("149.154.167.91") || ip.includes("vesta") || String(ip) === "4") {
-      return `wss://${DC_WEBSOCKET_DOMAINS[4]}/apiws${testServers ? "_test" : ""}`;
+
+    // 2. IP / DC Number to Telegram WebSocket Gateway Mapping
+    if (ip.startsWith("149.154.175") || String(ip) === "1" || ip.includes("pluto")) {
+      return `wss://pluto.web.telegram.org/apiws${testSuffix}`;
     }
-    if (ip.startsWith("149.154.175") || ip.includes("pluto") || String(ip) === "1") {
-      return `wss://${DC_WEBSOCKET_DOMAINS[1]}/apiws${testServers ? "_test" : ""}`;
+    if (ip.startsWith("149.154.167.5") || String(ip) === "2" || ip.includes("venus")) {
+      return `wss://venus.web.telegram.org/apiws${testSuffix}`;
     }
-    if (ip.startsWith("149.154.167") || ip.includes("venus") || String(ip) === "2") {
-      return `wss://${DC_WEBSOCKET_DOMAINS[2]}/apiws${testServers ? "_test" : ""}`;
+    if (ip.startsWith("149.154.175.1") || String(ip) === "3" || ip.includes("aurora")) {
+      return `wss://aurora.web.telegram.org/apiws${testSuffix}`;
     }
-    if (ip.startsWith("91.108.56") || ip.includes("flora") || String(ip) === "5") {
-      return `wss://${DC_WEBSOCKET_DOMAINS[5]}/apiws${testServers ? "_test" : ""}`;
+    if (ip.startsWith("149.154.167.9") || ip.includes("149.154.167") || String(ip) === "4" || ip.includes("vesta")) {
+      return `wss://vesta.web.telegram.org/apiws${testSuffix}`;
     }
-    return `wss://${DC_WEBSOCKET_DOMAINS[4]}/apiws${testServers ? "_test" : ""}`;
+    if (ip.startsWith("91.108.56") || String(ip) === "5" || ip.includes("flora")) {
+      return `wss://flora.web.telegram.org/apiws${testSuffix}`;
+    }
+
+    return `wss://vesta.web.telegram.org/apiws${testSuffix}`;
   }
 }
 
@@ -410,8 +408,8 @@ export class TgStreamClient {
 
   // 4. Handle 2FA Password Verification
   async signInWithPassword(password: string): Promise<TelegramUserProfile> {
-    const passStr = String(password || "");
-    if (!passStr.trim()) {
+    const passStr = String(password || "").trim();
+    if (!passStr) {
       throw new Error("2FA Password is required.");
     }
 
@@ -425,7 +423,10 @@ export class TgStreamClient {
         })
       );
 
-      const me = checkRes.user || (checkRes.authorization && checkRes.authorization.user) || (await this.client.getMe());
+      const me =
+        checkRes.user ||
+        (checkRes.authorization && checkRes.authorization.user) ||
+        (await this.client.getMe());
       const cleanUser: TelegramUserProfile = {
         id: String(me.id || ""),
         firstName: me.firstName || "",
@@ -441,9 +442,16 @@ export class TgStreamClient {
       this.isConnected = true;
       this.notifyStatus();
       return cleanUser;
-    } catch (err) {
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (message.includes("PASSWORD_HASH_INVALID")) {
+        throw new Error("Invalid Two-Step Verification password");
+      }
+      if (message.includes("FLOOD_WAIT")) {
+        throw new Error("Too many attempts. Please wait a few minutes.");
+      }
       console.error("Failed to sign in with password:", err);
-      throw err;
+      throw new Error(message || "Failed to sign in with 2FA password");
     }
   }
 

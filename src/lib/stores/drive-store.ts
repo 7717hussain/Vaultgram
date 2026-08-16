@@ -80,8 +80,9 @@ interface DriveStoreState {
   triggerCloudSync: () => void;
   hydrateFromCloudConfig: (config: VaultgramCloudConfig) => void;
 
-  // Incremental Appender
+  // Incremental Appender & Updater
   appendStreamedFiles: (newFiles: DriveFile[]) => void;
+  updateFile: (fileId: string, updated: Partial<DriveFile>) => void;
 
   // Organization
   togglePin: (fileId: string) => void;
@@ -305,6 +306,35 @@ export const useDriveStore = create<DriveStoreState>((set, get) => ({
     const updatedList = Array.from(map.values()).sort((a, b) => b.date - a.date);
     set({
       files: updatedList,
+      channelFilesCache: cache,
+    });
+  },
+
+  updateFile: (fileId: string, updated: Partial<DriveFile>) => {
+    const currentFiles = get().files;
+    const cache = new Map(get().channelFilesCache);
+    let targetChannelId = "";
+
+    const updatedFiles = currentFiles.map((f) => {
+      if (f.id === fileId) {
+        targetChannelId = f.channelId;
+        return { ...f, ...updated };
+      }
+      return f;
+    });
+
+    if (targetChannelId && cache.has(targetChannelId)) {
+      const channelFiles = cache.get(targetChannelId)!.map((f) => {
+        if (f.id === fileId) {
+          return { ...f, ...updated };
+        }
+        return f;
+      });
+      cache.set(targetChannelId, channelFiles);
+    }
+
+    set({
+      files: updatedFiles,
       channelFilesCache: cache,
     });
   },

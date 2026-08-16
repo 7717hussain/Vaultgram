@@ -15,25 +15,30 @@ const DC_WEBSOCKET_DOMAINS = {
 };
 
 export class TelegramBrowserWebSocket extends PromisedWebSockets {
-  getWebSocketLink(ip, port, testServers) {
-    for (const [dc, domain] of Object.entries(DC_WEBSOCKET_DOMAINS)) {
-      if (ip.includes(domain) || String(ip) === String(dc)) {
-        return `wss://${domain}/apiws${testServers ? "_test" : ""}`;
-      }
+  getWebSocketLink(ip, _port, testServers) {
+    const testSuffix = testServers ? "_test" : "";
+
+    if (ip.includes("web.telegram.org") || ip.includes("telegram.org")) {
+      return `wss://${ip}/apiws${testSuffix}`;
     }
-    if (ip.includes("149.154.167.91") || ip.includes("vesta") || String(ip) === "4") {
-      return `wss://${DC_WEBSOCKET_DOMAINS[4]}/apiws${testServers ? "_test" : ""}`;
+
+    if (ip.startsWith("149.154.175") || String(ip) === "1" || ip.includes("pluto")) {
+      return `wss://pluto.web.telegram.org/apiws${testSuffix}`;
     }
-    if (ip.startsWith("149.154.175") || ip.includes("pluto") || String(ip) === "1") {
-      return `wss://${DC_WEBSOCKET_DOMAINS[1]}/apiws${testServers ? "_test" : ""}`;
+    if (ip.startsWith("149.154.167.5") || String(ip) === "2" || ip.includes("venus")) {
+      return `wss://venus.web.telegram.org/apiws${testSuffix}`;
     }
-    if (ip.startsWith("149.154.167") || ip.includes("venus") || String(ip) === "2") {
-      return `wss://${DC_WEBSOCKET_DOMAINS[2]}/apiws${testServers ? "_test" : ""}`;
+    if (ip.startsWith("149.154.175.1") || String(ip) === "3" || ip.includes("aurora")) {
+      return `wss://aurora.web.telegram.org/apiws${testSuffix}`;
     }
-    if (ip.startsWith("91.108.56") || ip.includes("flora") || String(ip) === "5") {
-      return `wss://${DC_WEBSOCKET_DOMAINS[5]}/apiws${testServers ? "_test" : ""}`;
+    if (ip.startsWith("149.154.167.9") || ip.includes("149.154.167") || String(ip) === "4" || ip.includes("vesta")) {
+      return `wss://vesta.web.telegram.org/apiws${testSuffix}`;
     }
-    return `wss://${DC_WEBSOCKET_DOMAINS[4]}/apiws${testServers ? "_test" : ""}`;
+    if (ip.startsWith("91.108.56") || String(ip) === "5" || ip.includes("flora")) {
+      return `wss://flora.web.telegram.org/apiws${testSuffix}`;
+    }
+
+    return `wss://vesta.web.telegram.org/apiws${testSuffix}`;
   }
 }
 

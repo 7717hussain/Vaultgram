@@ -21,6 +21,10 @@ export interface DriveFile {
   isPinned?: boolean;
   isFavorite?: boolean;
   streamUrl?: string;
+  dcId?: number;
+  accessHash?: string | bigint | any;
+  fileReference?: any;
+  location?: any;
 }
 
 export function classifyFileType(fileName: string, mimeType: string, isPhoto = false): FileCategory {
@@ -74,11 +78,13 @@ export function normalizeTelegramMessage(msg: any, channel: ChannelMeta): DriveF
   if (!msg || !msg.media) return null;
 
   let doc = null;
+  let photo = null;
   let isPhoto = false;
 
   if (msg.media.document) {
     doc = msg.media.document;
   } else if (msg.media.photo) {
+    photo = msg.media.photo;
     isPhoto = true;
   }
 
@@ -107,6 +113,35 @@ export function normalizeTelegramMessage(msg: any, channel: ChannelMeta): DriveF
 
   const category = classifyFileType(fileName, mimeType, isPhoto);
 
+  let dcId: number | undefined = undefined;
+  let accessHash: string | bigint | undefined = undefined;
+  let fileReference: any = undefined;
+  let location: any = undefined;
+
+  if (doc) {
+    dcId = doc.dcId;
+    accessHash = doc.accessHash;
+    fileReference = doc.fileReference;
+    location = {
+      id: doc.id,
+      accessHash: doc.accessHash,
+      fileReference: doc.fileReference,
+      thumbSize: "",
+    };
+  } else if (photo) {
+    dcId = photo.dcId;
+    accessHash = photo.accessHash;
+    fileReference = photo.fileReference;
+    const sizes = photo.sizes || [];
+    const largestSize = sizes[sizes.length - 1];
+    location = {
+      id: photo.id,
+      accessHash: photo.accessHash,
+      fileReference: photo.fileReference,
+      thumbSize: (largestSize && "type" in largestSize ? largestSize.type : "x") || "x",
+    };
+  }
+
   return {
     id: `${channelId}_${messageId}`,
     messageId,
@@ -117,7 +152,11 @@ export function normalizeTelegramMessage(msg: any, channel: ChannelMeta): DriveF
     mimeType,
     date: msg.date || Math.floor(Date.now() / 1000),
     category,
-    streamUrl: `/stream/${channelId}/${messageId}?size=${size}&mime=${encodeURIComponent(mimeType)}`,
+    dcId,
+    accessHash,
+    fileReference,
+    location,
+    streamUrl: `/stream/${channelId}_${messageId}?size=${size}&mime=${encodeURIComponent(mimeType)}`,
   };
 }
 

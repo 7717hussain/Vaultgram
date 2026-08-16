@@ -62,18 +62,20 @@ export const PhoneLoginTab: React.FC = () => {
 
   const handleVerify2FA = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!password) {
+    const cleanPassword = String(password || "").trim();
+    if (!cleanPassword) {
       toast.error("Please enter your 2FA password.");
       return;
     }
 
     setIsSubmitting(true);
     try {
-      const user = await tgStreamClient.signInWithPassword(password);
+      const user = await tgStreamClient.signInWithPassword(cleanPassword);
       toast.success(`Connected as ${user.firstName || "Telegram User"}`);
       setUser(user);
     } catch (err: any) {
-      toast.error(err.message || "Incorrect 2FA password.");
+      const msg = err instanceof Error ? err.message : String(err);
+      toast.error(msg || "Incorrect 2FA password.");
     } finally {
       setIsSubmitting(false);
     }

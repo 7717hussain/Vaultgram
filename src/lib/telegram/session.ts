@@ -194,6 +194,32 @@ export async function getChannelFilesFromDb(channelId: string): Promise<DriveFil
   }
 }
 
+export async function getFileFromDb(fileId: string): Promise<DriveFile | null> {
+  try {
+    const parts = fileId.split("_");
+    const channelId = parts[0];
+    if (channelId) {
+      const channelFiles = await getChannelFilesFromDb(channelId);
+      const found = channelFiles.find((f) => f.id === fileId);
+      if (found) return found;
+    }
+
+    // Fallback: search across all selected channels in DB
+    const channels = await getSavedSelectedChannels();
+    for (const ch of channels) {
+      if (ch.id !== channelId) {
+        const cFiles = await getChannelFilesFromDb(ch.id);
+        const f = cFiles.find((x) => x.id === fileId);
+        if (f) return f;
+      }
+    }
+    return null;
+  } catch (e) {
+    console.error(`Error loading file ${fileId} from DB:`, e);
+    return null;
+  }
+}
+
 export async function saveChannelFilesToDb(channelId: string, files: DriveFile[]): Promise<void> {
   try {
     await set(`${PREFIX_CHANNEL_FILES}${channelId}`, files);
@@ -202,6 +228,21 @@ export async function saveChannelFilesToDb(channelId: string, files: DriveFile[]
   }
 }
 
+export async function updateFileInDb(file: DriveFile): Promise<void> {
+  try {
+    if (!file.channelId) return;
+    const current = await getChannelFilesFromDb(file.channelId);
+    const index = current.findIndex((f) => f.id === file.id);
+    if (index >= 0) {
+      current[index] = file;
+    } else {
+      current.push(file);
+    }
+    await saveChannelFilesToDb(file.channelId, current);
+  } catch (e) {
+    console.error(`Error updating file ${file.id} in DB:`, e);
+  }
+}
 export async function appendChannelFilesBatchToDb(channelId: string, newBatch: DriveFile[]): Promise<DriveFile[]> {
   try {
     const current = await getChannelFilesFromDb(channelId);

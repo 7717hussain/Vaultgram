@@ -8,8 +8,6 @@ import { ChannelWizard } from "@/components/wizard/channel-wizard";
 import { Sidebar } from "@/components/layout/sidebar";
 import { DriveCanvas } from "@/components/drive/drive-canvas";
 import { TransferDock } from "@/components/drive/transfer-dock";
-import { initStreamBridge } from "@/lib/stream/stream-bridge";
-import { tgStreamClient } from "@/lib/telegram/client";
 import { HardDrive } from "lucide-react";
 import { Toaster } from "sonner";
 
@@ -21,7 +19,6 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     hydrateStore();
-    initStreamBridge(() => tgStreamClient.client);
   }, [hydrateStore]);
 
   useEffect(() => {
