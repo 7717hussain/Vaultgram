@@ -26,8 +26,8 @@ export function initStreamBridge(getClient: () => TelegramClient | null) {
 
       try {
         const client = getClient();
-        if (!client || !client.connected) {
-          port.postMessage({ error: "Telegram MTProto client is not connected" });
+        if (!client) {
+          port.postMessage({ error: "Telegram MTProto client is not available" });
           return;
         }
 
@@ -54,15 +54,33 @@ export function initStreamBridge(getClient: () => TelegramClient | null) {
             if (matches[2]) {
               end = Math.min(fileSize - 1, parseInt(matches[2], 10));
             } else {
-              end = Math.min(fileSize - 1, start + 1.5 * 1024 * 1024 - 1);
+              end = Math.min(fileSize - 1, start + 2 * 1024 * 1024 - 1);
             }
           }
         } else {
-          end = Math.min(fileSize - 1, 1.5 * 1024 * 1024 - 1);
+          end = Math.min(fileSize - 1, 2 * 1024 * 1024 - 1);
         }
 
         const requestLength = end - start + 1;
-        const payload = await reader.readRange(start, requestLength);
+
+        // Perform fetch with transparent retry on network jitter
+        let payload: Uint8Array | null = null;
+        let lastErr: any = null;
+
+        for (let attempt = 0; attempt < 3; attempt++) {
+          try {
+            payload = await reader.readRange(start, requestLength);
+            break;
+          } catch (err: any) {
+            lastErr = err;
+            console.warn(`[StreamBridge] Range fetch attempt ${attempt + 1}/3 failed for ${file.name}:`, err?.message || err);
+            await new Promise((resolve) => setTimeout(resolve, 300));
+          }
+        }
+
+        if (!payload) {
+          throw lastErr || new Error("Failed to fetch range after 3 attempts");
+        }
 
         port.postMessage(
           {

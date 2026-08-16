@@ -182,13 +182,17 @@ export class TelegramRangeReader {
   }
 
   /**
-   * Retrieves or initializes a pooled MTProto sender for the target media DC.
+   * Retrieves or re-establishes a live pooled MTProto sender for the target media DC.
    */
   private async getSender(): Promise<any> {
     if (this.activeSenders.has(this.dcId)) {
-      return this.activeSenders.get(this.dcId);
+      const cached = this.activeSenders.get(this.dcId);
+      if (cached && (!cached.isConnected || cached.isConnected())) {
+        return cached;
+      }
     }
 
+    this.activeSenders.delete(this.dcId);
     const sender = await this.client.getSender(this.dcId);
     this.activeSenders.set(this.dcId, sender);
     return sender;
@@ -294,7 +298,7 @@ export class TelegramRangeReader {
   }
 
   /**
-   * Fetches a single aligned chunk that strictly obeys Telegram 1 MiB boundary constraints.
+   * Fetches a single aligned chunk that strictly obeys Telegram 1 MiB boundary constraints with auto-reconnect.
    */
   private async fetchSingleAlignedChunk(
     alignedOffset: number,
@@ -307,30 +311,6 @@ export class TelegramRangeReader {
     }
 
     const startTime = Date.now();
-
-    // Pre-flight Telegram protocol validation logging
-    const crosses1MiBBoundary =
-      Math.floor(alignedOffset / ONE_MIB) !== Math.floor((alignedOffset + limit - 1) / ONE_MIB);
-
-    console.log(`[TelegramRangeReader] GET_FILE_VALIDATE`, {
-      offset: alignedOffset,
-      limit: limit,
-      precise: true,
-      offsetMod1024: alignedOffset % 1024,
-      limitMod1024: limit % 1024,
-      blockIndex: Math.floor(alignedOffset / ONE_MIB),
-      blockOffset: alignedOffset % ONE_MIB,
-      remainingIn1MiBBlock: ONE_MIB - (alignedOffset % ONE_MIB),
-      crosses1MiBBoundary,
-    });
-
-    if (crosses1MiBBoundary) {
-      console.error(`[TelegramRangeReader] FATAL PROTOCOL VIOLATION: Chunk crosses 1 MiB block boundary!`, {
-        offset: alignedOffset,
-        limit,
-      });
-      throw new Error(`ILLEGAL_TELEGRAM_CHUNK_BOUNDARY: offset ${alignedOffset}, limit ${limit}`);
-    }
 
     try {
       const sender = await this.getSender();
@@ -378,11 +358,27 @@ export class TelegramRangeReader {
         return this.fetchSingleAlignedChunk(alignedOffset, limit, signal, retryCount + 1);
       }
 
-      // Handle Connection drops / Transport retries
-      if ((errMsg.includes("Not connected") || errMsg.includes("TIMEOUT") || errMsg.includes("RPC_CALL_FAIL")) && retryCount < 3) {
-        console.warn(`[TelegramRangeReader] Transient error (${errMsg}). Retrying in 500ms...`);
+      // Handle Connection drops / Disconnects / Transport retries
+      const isConnectionError =
+        errMsg.toLowerCase().includes("disconnect") ||
+        errMsg.toLowerCase().includes("not connected") ||
+        errMsg.toLowerCase().includes("connection closed") ||
+        errMsg.toLowerCase().includes("timeout") ||
+        errMsg.toLowerCase().includes("rpc_call_fail") ||
+        errMsg.toLowerCase().includes("socket") ||
+        errMsg.toLowerCase().includes("network");
+
+      if (isConnectionError && retryCount < 5) {
+        console.warn(`[TelegramRangeReader] Socket disconnected (${errMsg}). Auto-reconnecting sender for DC ${this.dcId}... (attempt ${retryCount + 1}/5)`);
         this.activeSenders.delete(this.dcId);
-        await new Promise((resolve) => setTimeout(resolve, 500));
+
+        if (!this.client.connected && this.client.connect) {
+          try {
+            await this.client.connect();
+          } catch (_) {}
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 400));
         if (signal.aborted || this.isDestroyed) throw new Error("ABORTED");
         return this.fetchSingleAlignedChunk(alignedOffset, limit, signal, retryCount + 1);
       }
