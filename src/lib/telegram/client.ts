@@ -415,7 +415,17 @@ export class TgStreamClient {
 
     try {
       const passwordSrpResult = await this.client.invoke(new Api.account.GetPassword());
-      const passwordSrpCheck = await computeCheck(passwordSrpResult, passStr);
+      const passwordSrpCheck: any = await computeCheck(passwordSrpResult, passStr);
+
+      // Ensure A and M1 are explicitly typed as Buffer instances for TL serialization
+      if (passwordSrpCheck) {
+        if (passwordSrpCheck.A && !(passwordSrpCheck.A instanceof Buffer)) {
+          passwordSrpCheck.A = Buffer.from(passwordSrpCheck.A);
+        }
+        if (passwordSrpCheck.M1 && !(passwordSrpCheck.M1 instanceof Buffer)) {
+          passwordSrpCheck.M1 = Buffer.from(passwordSrpCheck.M1);
+        }
+      }
 
       const checkRes = await this.client.invoke(
         new Api.auth.CheckPassword({
